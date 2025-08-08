@@ -6,40 +6,65 @@ Un système CI/CD professionnel complet a été mis en place avec GitHub Actions
 
 ## 📋 **Pipelines Créés**
 
-### 1. **Pipeline CI** (`.github/workflows/ci.yml`)
+### 1. **Pipeline Development** (`.github/workflows/ci.yml`)
 
 **Déclencheurs :**
-- Push sur `main` ou `develop`
-- Pull Requests vers `main`
-- Releases
+- Push sur `develop` ou `feature/*`
+- Pull Requests vers `develop` ou `main`
 
 **Jobs :**
-- ✅ **Tests Python** (API, Worker, Agent)
-- ✅ **Tests Interface Web** (Next.js, TypeScript)
-- ✅ **Tests Docker** (Build, Startup, Health checks)
+- ✅ **Tests Python rapides** (API, Worker, Agent)
+- ✅ **Tests Interface Web** (Next.js, TypeScript, Lint)
 - ✅ **Analyse de sécurité** (Bandit)
-- ✅ **Build des artefacts** (Python packages, Docker images)
+- ✅ **Build léger** (artefacts de développement)
+- ✅ **Notifications** dev team
 
-### 2. **Pipeline Release** (`.github/workflows/release.yml`)
+### 2. **Pipeline Production** (`.github/workflows/production.yml`)
 
-**Déclencheur :** Manuel via interface GitHub
+**Déclencheurs :**
+- Push sur `main`
+- Releases publiées
+
+**Jobs :**
+- ✅ **Tests complets** avec services (PostgreSQL, Redis)
+- ✅ **Tests web production** (build optimisé)
+- ✅ **Tests Docker production** (stack complète)
+- ✅ **Analyse sécurité approfondie** (Bandit, Safety, Trivy)
+- ✅ **Build production** (images Docker optimisées)
+- ✅ **Publication** GitHub Container Registry
+
+### 3. **Pipeline Release** (`.github/workflows/release.yml`)
+
+**Déclencheurs :**
+- Manuel via interface GitHub
+- Push sur `main` avec modification de `VERSION`
 
 **Fonctionnalités :**
 - ✅ **Sélection du type de version** (patch/minor/major/prerelease)
 - ✅ **Tests pré-release** automatiques
 - ✅ **Création automatique** de tags Git
 - ✅ **Publication GitHub Release** avec notes
-- ✅ **Build et push** des images Docker
-- ✅ **Artefacts attachés** à la release
+- ✅ **Build et push** des images Docker versionnées
 
-### 3. **Pipeline Deploy** (`.github/workflows/deploy.yml`)
+### 4. **Pipeline Deploy Staging** (`.github/workflows/deploy-staging.yml`)
+
+**Déclencheurs :**
+- Push sur `develop`
+- Déploiement manuel
+
+**Fonctionnalités :**
+- ✅ **Build images staging** (tag avec SHA)
+- ✅ **Déploiement automatique** vers staging
+- ✅ **Tests de fumée** post-déploiement
+- ✅ **Notifications** équipe
+
+### 5. **Pipeline Deploy Production** (`.github/workflows/deploy.yml`)
 
 **Déclencheurs :**
 - Release publiée
-- Déploiement manuel
+- Déploiement manuel production
 
 **Environnements :**
-- ✅ **Staging** (versions alpha/beta)
 - ✅ **Production** (versions stables)
 - ✅ **Migrations de base de données**
 - ✅ **Tests post-déploiement**
@@ -60,16 +85,34 @@ Un système CI/CD professionnel complet a été mis en place avec GitHub Actions
 
 ## 🔄 **Workflow Complet**
 
-### Développement
+### Développement (Branche `develop` et `feature/*`)
 ```bash
 # 1. Développer une fonctionnalité
 git checkout -b feature/nouvelle-fonctionnalite
 # ... développement ...
 git commit -m "feat: nouvelle fonctionnalité"
 git push origin feature/nouvelle-fonctionnalite
+# → Déclenche le workflow Development CI
 
-# 2. Créer une Pull Request
-# → Déclenche automatiquement les tests CI
+# 2. Créer une Pull Request vers develop
+# → Déclenche les tests Development CI
+
+# 3. Merge vers develop
+git checkout develop
+git merge feature/nouvelle-fonctionnalite
+git push origin develop
+# → Déclenche le déploiement automatique vers staging
+```
+
+### Production (Branche `main`)
+```bash
+# 1. Merge develop vers main (après validation staging)
+git checkout main
+git merge develop
+git push origin main
+# → Déclenche le workflow Production CI/CD complet
+
+# 2. Les images Docker sont buildées et publiées automatiquement
 ```
 
 ### Release

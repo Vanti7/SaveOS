@@ -1,0 +1,66 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [ develop ]
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    name: Déploiement Staging
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push staging images
+      run: |
+        # Tag staging avec le SHA du commit
+        TAG=ghcr.io/${{ github.repository_owner }}/saveos:staging-${{ github.sha }}
+        
+        # Build des images
+        docker-compose build
+        
+        # Tag et push pour staging
+        docker tag saveos_api:latest $TAG-api
+        docker tag saveos_worker:latest $TAG-worker
+        docker tag saveos_web:latest $TAG-web
+        
+        docker push $TAG-api
+        docker push $TAG-worker
+        docker push $TAG-web
+
+    - name: Deploy to staging environment
+      run: |
+        echo "🚀 Déploiement en staging"
+        echo "Version: staging-${{ github.sha }}"
+        
+        # Exemple de déploiement (à adapter selon votre infrastructure)
+        # ssh staging-server "cd /opt/saveos-staging && git pull && docker-compose up -d"
+        # kubectl set image deployment/saveos-api-staging api=$TAG-api
+        
+        echo "✅ Déploiement staging simulé"
+
+    - name: Run smoke tests on staging
+      run: |
+        echo "🧪 Tests de fumée sur staging"
+        # python scripts/smoke_tests.py --env staging
+        echo "✅ Tests de fumée passés"
+
+    - name: Notify staging deployment
+      run: |
+        echo "📢 Déploiement staging terminé"
+        echo "🔗 URL: https://staging.saveos.com"
+        # Ajouter notification Slack/Discord

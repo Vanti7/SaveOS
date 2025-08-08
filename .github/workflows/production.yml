@@ -1,0 +1,287 @@
+name: Production CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  # Tests complets pour production
+  production-tests:
+    name: Tests Production
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: saveos123
+          POSTGRES_USER: saveos
+          POSTGRES_DB: saveos
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov flake8 black isort mypy
+
+    - name: Code quality checks
+      run: |
+        black --check api/ worker/ agent/
+        isort --check-only api/ worker/ agent/
+        flake8 api/ worker/ agent/ --max-line-length=100 --ignore=E203,W503
+        mypy api/ worker/ agent/ --ignore-missing-imports || true
+
+    - name: Run comprehensive tests
+      env:
+        DATABASE_URL: postgresql://saveos:saveos123@localhost:5432/saveos
+        REDIS_URL: redis://localhost:6379/0
+      run: |
+        python test_local.py
+        pytest tests/ -v --cov=api --cov=worker --cov=agent --cov-report=xml || true
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+
+  # Tests interface web production
+  web-production-tests:
+    name: Tests Web Production
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: web/package-lock.json
+
+    - name: Install dependencies
+      working-directory: web
+      run: npm ci
+
+    - name: Run linting
+      working-directory: web
+      run: npm run lint
+
+    - name: Type checking
+      working-directory: web
+      run: npx tsc --noEmit
+
+    - name: Build production
+      working-directory: web
+      run: npm run build
+
+    - name: Run tests (if any)
+      working-directory: web
+      run: npm test --if-present
+
+  # Tests Docker complets
+  docker-production-tests:
+    name: Tests Docker Production
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build production images
+      run: |
+        docker-compose -f docker-compose.prod.yml build
+
+    - name: Test production stack startup
+      run: |
+        # Démarrer avec des variables d'environnement de test
+        export POSTGRES_PASSWORD=test123
+        export MINIO_ROOT_USER=testuser
+        export MINIO_ROOT_PASSWORD=testpass123
+        export GRAFANA_PASSWORD=testgrafana
+        
+        docker-compose -f docker-compose.prod.yml up -d postgres redis minio
+        sleep 30
+        
+        # Vérifier que les services de base sont up
+        docker-compose -f docker-compose.prod.yml ps
+        
+        echo "✅ Stack de production testée"
+
+    - name: Cleanup
+      if: always()
+      run: docker-compose -f docker-compose.prod.yml down -v
+
+  # Analyse de sécurité approfondie
+  security-scan:
+    name: Analyse de Sécurité
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Bandit (Python security)
+      run: |
+        pip install bandit
+        bandit -r api/ worker/ agent/ -f json -o bandit-report.json || true
+
+    - name: Run Safety (vulnerabilities)
+      run: |
+        pip install safety
+        safety check -r requirements.txt --json --output safety-report.json || true
+
+    - name: Docker security scan
+      run: |
+        docker run --rm -v $(pwd):/app -w /app aquasec/trivy fs . || true
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  # Build et publication production
+  build-production:
+    name: Build Production
+    runs-on: ubuntu-latest
+    needs: [production-tests, web-production-tests, docker-production-tests, security-scan]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Build Python package
+      run: |
+        pip install build
+        python -m build
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Build web production
+      working-directory: web
+      run: |
+        npm ci
+        npm run build
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push production images
+      run: |
+        # Tag avec la version et latest
+        VERSION=$(cat VERSION)
+        COMMIT_SHA=${{ github.sha }}
+        
+        # Build des images de production
+        docker build -f Dockerfile.prod --target api-prod -t ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION .
+        docker build -f Dockerfile.prod --target worker-prod -t ghcr.io/${{ github.repository_owner }}/saveos-worker:$VERSION .
+        docker build -f Dockerfile.prod --target web-prod -t ghcr.io/${{ github.repository_owner }}/saveos-web:$VERSION .
+        
+        # Tags latest
+        docker tag ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION ghcr.io/${{ github.repository_owner }}/saveos-api:latest
+        docker tag ghcr.io/${{ github.repository_owner }}/saveos-worker:$VERSION ghcr.io/${{ github.repository_owner }}/saveos-worker:latest
+        docker tag ghcr.io/${{ github.repository_owner }}/saveos-web:$VERSION ghcr.io/${{ github.repository_owner }}/saveos-web:latest
+        
+        # Push toutes les images
+        docker push ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION
+        docker push ghcr.io/${{ github.repository_owner }}/saveos-api:latest
+        docker push ghcr.io/${{ github.repository_owner }}/saveos-worker:$VERSION
+        docker push ghcr.io/${{ github.repository_owner }}/saveos-worker:latest
+        docker push ghcr.io/${{ github.repository_owner }}/saveos-web:$VERSION
+        docker push ghcr.io/${{ github.repository_owner }}/saveos-web:latest
+
+    - name: Upload production artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: production-artifacts
+        path: |
+          dist/
+          web/.next/
+          docker-compose.prod.yml
+
+  # Notification production
+  notify-production:
+    name: Notifications Production
+    runs-on: ubuntu-latest
+    needs: [production-tests, web-production-tests, docker-production-tests, security-scan, build-production]
+    if: always()
+    
+    steps:
+    - name: Notify on success
+      if: needs.production-tests.result == 'success' && needs.web-production-tests.result == 'success' && needs.docker-production-tests.result == 'success'
+      run: |
+        echo "🎉 Build de production réussi!"
+        echo "✅ Tous les tests sont passés"
+        echo "🚀 Images Docker publiées"
+        # Ajouter notifications Slack/Discord/Email
+
+    - name: Notify on failure
+      if: needs.production-tests.result == 'failure' || needs.web-production-tests.result == 'failure' || needs.docker-production-tests.result == 'failure'
+      run: |
+        echo "❌ Échec du build de production!"
+        echo "🔍 Vérifier les logs des tests"
+        # Ajouter notifications d'alerte

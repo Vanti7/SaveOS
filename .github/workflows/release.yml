@@ -1,4 +1,4 @@
-name: Release SaveOS
+name: Create Release
 
 on:
   workflow_dispatch:
@@ -26,6 +26,9 @@ on:
         description: 'Message de release'
         required: false
         default: 'New release'
+  push:
+    branches: [ main ]
+    paths: [ 'VERSION' ]
 
 jobs:
   release:
