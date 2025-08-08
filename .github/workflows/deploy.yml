@@ -1,0 +1,187 @@
+name: Deploy SaveOS
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environnement de déploiement'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Version à déployer'
+        required: true
+        default: 'latest'
+
+jobs:
+  deploy-staging:
+    name: Déploiement Staging
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'staging' || (github.event_name == 'release' && contains(github.event.release.tag_name, 'alpha'))
+    environment: staging
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to staging
+      run: |
+        echo "🚀 Déploiement en staging"
+        echo "Version: ${{ github.event.release.tag_name || github.event.inputs.version }}"
+        
+        # Exemple de déploiement Docker Swarm
+        # docker stack deploy -c docker-compose.yml saveos-staging
+        
+        # Exemple de déploiement Kubernetes
+        # kubectl apply -f k8s/
+        # kubectl set image deployment/saveos-api api=ghcr.io/org/saveos-api:$VERSION
+        
+        # Exemple de déploiement simple
+        # ssh user@staging-server "cd /opt/saveos && git pull && docker-compose up -d"
+
+    - name: Run smoke tests
+      run: |
+        echo "🧪 Tests de fumée en staging"
+        # curl -f https://staging.saveos.com/health
+        # python scripts/smoke_tests.py --env staging
+
+    - name: Notify deployment
+      run: |
+        echo "✅ Déploiement staging terminé"
+
+  deploy-production:
+    name: Déploiement Production
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'production' || (github.event_name == 'release' && !contains(github.event.release.tag_name, 'alpha') && !contains(github.event.release.tag_name, 'beta'))
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Pre-deployment checks
+      run: |
+        echo "🔍 Vérifications pré-déploiement"
+        # Vérifier que les images Docker existent
+        # Vérifier la disponibilité des services externes
+        # Vérifier les migrations de base de données
+
+    - name: Deploy to production
+      run: |
+        echo "🚀 Déploiement en production"
+        echo "Version: ${{ github.event.release.tag_name || github.event.inputs.version }}"
+        
+        # Déploiement avec stratégie blue-green ou rolling update
+        # Exemple avec Docker Swarm:
+        # docker service update --image ghcr.io/org/saveos-api:$VERSION saveos_api
+        
+        # Exemple avec Kubernetes:
+        # kubectl set image deployment/saveos-api api=ghcr.io/org/saveos-api:$VERSION
+        # kubectl rollout status deployment/saveos-api
+
+    - name: Post-deployment tests
+      run: |
+        echo "🧪 Tests post-déploiement"
+        # Tests de santé complets
+        # Tests de performance
+        # Vérification des métriques
+
+    - name: Rollback on failure
+      if: failure()
+      run: |
+        echo "⚠️ Échec du déploiement - Rollback"
+        # kubectl rollout undo deployment/saveos-api
+        # docker service rollback saveos_api
+
+    - name: Notify success
+      run: |
+        echo "✅ Déploiement production réussi"
+        # Notification Slack/Discord/Email
+
+  database-migration:
+    name: Migration Base de Données
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install alembic
+
+    - name: Run database migrations
+      env:
+        DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      run: |
+        echo "🗄️ Migration de la base de données"
+        # alembic upgrade head
+        
+        # Ou migration personnalisée
+        python -c "
+        from api.database import create_tables
+        create_tables()
+        print('✅ Migrations appliquées')
+        "
+
+    - name: Backup database
+      run: |
+        echo "💾 Sauvegarde de la base de données"
+        # pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
+
+  monitoring:
+    name: Monitoring Post-Déploiement
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always()
+    
+    steps:
+    - name: Check application health
+      run: |
+        echo "🔍 Vérification de la santé de l'application"
+        # Vérifier les endpoints critiques
+        # curl -f https://api.saveos.com/health
+        # curl -f https://app.saveos.com
+
+    - name: Check metrics
+      run: |
+        echo "📊 Vérification des métriques"
+        # Vérifier Prometheus/Grafana
+        # Alertes automatiques si nécessaire
+
+    - name: Performance monitoring
+      run: |
+        echo "⚡ Monitoring des performances"
+        # Tests de charge légers
+        # Vérification des temps de réponse
+
+  cleanup:
+    name: Nettoyage
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always()
+    
+    steps:
+    - name: Cleanup old images
+      run: |
+        echo "🧹 Nettoyage des anciennes images"
+        # Supprimer les images Docker anciennes
+        # Nettoyer les artefacts temporaires
+
+    - name: Update documentation
+      run: |
+        echo "📚 Mise à jour de la documentation"
+        # Mettre à jour la documentation de déploiement
+        # Changelog de production

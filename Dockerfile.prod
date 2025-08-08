@@ -1,0 +1,102 @@
+# Dockerfile de production multi-stage pour SaveOS
+
+# Stage 1: Base Python avec dépendances
+FROM python:3.11-slim as python-base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# Installer les dépendances système
+RUN apt-get update && apt-get install -y \
+    borgbackup \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Stage 2: API Production
+FROM python-base as api-prod
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Créer un utilisateur non-root
+RUN groupadd -r saveos && useradd -r -g saveos saveos
+
+# Copier le code
+COPY api/ ./api/
+COPY worker/ ./worker/
+
+# Permissions
+RUN chown -R saveos:saveos /app
+USER saveos
+
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+
+# Stage 3: Worker Production
+FROM python-base as worker-prod
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Créer un utilisateur non-root
+RUN groupadd -r saveos && useradd -r -g saveos saveos
+
+# Copier le code
+COPY api/ ./api/
+COPY worker/ ./worker/
+
+# Créer les répertoires de travail
+RUN mkdir -p /tmp/borg_repos && chown -R saveos:saveos /tmp/borg_repos /app
+USER saveos
+
+CMD ["python", "-m", "worker.tasks"]
+
+# Stage 4: Web Production (Node.js multi-stage)
+FROM node:18-alpine as web-builder
+
+WORKDIR /app
+
+# Copier les fichiers de package
+COPY web/package*.json ./
+RUN npm ci --only=production
+
+# Copier le code source et builder
+COPY web/ .
+RUN npm run build
+
+# Stage 5: Web Runtime
+FROM node:18-alpine as web-prod
+
+WORKDIR /app
+
+# Créer un utilisateur non-root
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
+
+# Copier les fichiers buildés
+COPY --from=web-builder /app/public ./public
+COPY --from=web-builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=web-builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/api/health || exit 1
+
+CMD ["node", "server.js"]

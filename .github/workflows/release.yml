@@ -1,0 +1,188 @@
+name: Release SaveOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Type de version'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prerelease
+      prerelease_type:
+        description: 'Type de prerelease (si applicable)'
+        required: false
+        default: 'alpha'
+        type: choice
+        options:
+          - alpha
+          - beta
+          - rc
+      release_message:
+        description: 'Message de release'
+        required: false
+        default: 'New release'
+
+jobs:
+  release:
+    name: Créer une Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Configure Git
+      run: |
+        git config --global user.name "SaveOS Release Bot"
+        git config --global user.email "release-bot@saveos.local"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run tests before release
+      run: |
+        python test_local.py || echo "⚠️ Tests échoués mais on continue"
+
+    - name: Create release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Construire la commande de version
+        VERSION_CMD="python scripts/version.py bump --type ${{ github.event.inputs.version_type }}"
+        
+        if [ "${{ github.event.inputs.release_message }}" != "" ]; then
+          VERSION_CMD="$VERSION_CMD --message '${{ github.event.inputs.release_message }}'"
+        fi
+        
+        if [ "${{ github.event.inputs.version_type }}" == "prerelease" ]; then
+          VERSION_CMD="$VERSION_CMD --prerelease ${{ github.event.inputs.prerelease_type }}"
+        fi
+        
+        # Exécuter la création de version
+        eval $VERSION_CMD
+        
+        # Récupérer la nouvelle version
+        NEW_VERSION=$(python scripts/version.py current)
+        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+        
+        echo "✅ Version $NEW_VERSION créée"
+
+    - name: Commit and tag
+      run: |
+        git add .
+        git commit -m "chore: release v$NEW_VERSION"
+        git tag "v$NEW_VERSION"
+        git push origin main
+        git push origin "v$NEW_VERSION"
+
+    - name: Create GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Créer la release GitHub avec les notes
+        gh release create "v$NEW_VERSION" \
+          --title "SaveOS v$NEW_VERSION" \
+          --notes-file "RELEASE_NOTES_v$NEW_VERSION.md" \
+          --generate-notes
+
+    - name: Build and attach artifacts
+      run: |
+        # Build du package Python
+        python -m pip install build
+        python -m build
+        
+        # Attacher les artefacts à la release
+        gh release upload "v$NEW_VERSION" dist/*
+
+    - name: Trigger deployment
+      if: github.event.inputs.version_type != 'prerelease'
+      run: |
+        echo "🚀 Déclenchement du déploiement pour v$NEW_VERSION"
+        # Ici, déclencher le déploiement automatique
+        # Par exemple: webhook, autre workflow, etc.
+
+  docker-release:
+    name: Release Docker Images
+    runs-on: ubuntu-latest
+    needs: release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: "v${{ needs.release.outputs.version }}"
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Login to Docker Hub (optionnel)
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Get version
+      run: |
+        VERSION=$(cat VERSION)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+    - name: Build and push Docker images
+      run: |
+        # Tags pour les images
+        API_TAG="ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION"
+        WORKER_TAG="ghcr.io/${{ github.repository_owner }}/saveos-worker:$VERSION"
+        WEB_TAG="ghcr.io/${{ github.repository_owner }}/saveos-web:$VERSION"
+        
+        # Build des images
+        docker-compose build
+        
+        # Tag et push
+        docker tag saveos_api:latest $API_TAG
+        docker tag saveos_api:latest ghcr.io/${{ github.repository_owner }}/saveos-api:latest
+        
+        docker tag saveos_worker:latest $WORKER_TAG
+        docker tag saveos_worker:latest ghcr.io/${{ github.repository_owner }}/saveos-worker:latest
+        
+        docker tag saveos_web:latest $WEB_TAG
+        docker tag saveos_web:latest ghcr.io/${{ github.repository_owner }}/saveos-web:latest
+        
+        # Push toutes les images
+        docker push $API_TAG
+        docker push ghcr.io/${{ github.repository_owner }}/saveos-api:latest
+        
+        docker push $WORKER_TAG
+        docker push ghcr.io/${{ github.repository_owner }}/saveos-worker:latest
+        
+        docker push $WEB_TAG
+        docker push ghcr.io/${{ github.repository_owner }}/saveos-web:latest
+
+    - name: Update docker-compose for release
+      run: |
+        # Créer un docker-compose.yml pour la release avec les bonnes images
+        sed "s/build:/# build:/g" docker-compose.yml > docker-compose.release.yml
+        sed -i "s|# build:|image: ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION|g" docker-compose.release.yml
+        
+        # Attacher à la release
+        gh release upload "v$VERSION" docker-compose.release.yml

@@ -1,0 +1,64 @@
+# Configuration des environnements SaveOS
+
+local:
+  api_url: "https://localhost:8000"
+  web_url: "http://localhost:3000"
+  database_url: "postgresql://saveos:saveos123@localhost:5432/saveos"
+  redis_url: "redis://localhost:6379/0"
+  minio_url: "http://localhost:9000"
+  ssl_verify: false
+  
+staging:
+  api_url: "https://api-staging.saveos.com"
+  web_url: "https://staging.saveos.com"
+  database_url: "${STAGING_DATABASE_URL}"
+  redis_url: "${STAGING_REDIS_URL}"
+  minio_url: "${STAGING_MINIO_URL}"
+  ssl_verify: true
+  replicas:
+    api: 2
+    worker: 2
+    web: 2
+  resources:
+    api:
+      cpu: "500m"
+      memory: "1Gi"
+    worker:
+      cpu: "500m"
+      memory: "1Gi"
+    web:
+      cpu: "250m"
+      memory: "512Mi"
+
+production:
+  api_url: "https://api.saveos.com"
+  web_url: "https://app.saveos.com"
+  database_url: "${PRODUCTION_DATABASE_URL}"
+  redis_url: "${PRODUCTION_REDIS_URL}"
+  minio_url: "${PRODUCTION_MINIO_URL}"
+  ssl_verify: true
+  replicas:
+    api: 3
+    worker: 5
+    web: 3
+  resources:
+    api:
+      cpu: "1000m"
+      memory: "2Gi"
+    worker:
+      cpu: "1000m"
+      memory: "2Gi"
+    web:
+      cpu: "500m"
+      memory: "1Gi"
+  monitoring:
+    enabled: true
+    grafana_url: "https://monitoring.saveos.com"
+    prometheus_url: "https://metrics.saveos.com"
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"  # Tous les jours à 2h
+    retention: "30d"
+  alerts:
+    email: "ops@saveos.com"
+    slack_webhook: "${SLACK_WEBHOOK_URL}"
