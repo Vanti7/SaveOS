@@ -2,7 +2,7 @@ name: Production CI/CD
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   release:
     types: [ published ]
 
@@ -193,7 +193,7 @@ jobs:
     name: Build Production
     runs-on: ubuntu-latest
     needs: [production-tests, web-production-tests, docker-production-tests, security-scan]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     
     steps:
     - name: Checkout code

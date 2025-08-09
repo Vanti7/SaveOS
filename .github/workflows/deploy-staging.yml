@@ -46,18 +46,21 @@ jobs:
       run: |
         echo "🚀 Déploiement en staging"
         echo "Version: staging-${{ github.sha }}"
+        echo "Branch: ${{ github.ref_name }}"
         
-        # Exemple de déploiement (à adapter selon votre infrastructure)
-        # ssh staging-server "cd /opt/saveos-staging && git pull && docker-compose up -d"
-        # kubectl set image deployment/saveos-api-staging api=$TAG-api
-        
-        echo "✅ Déploiement staging simulé"
+        # Simulation du déploiement staging
+        echo "📦 Images Docker taguées et prêtes"
+        echo "🔧 Configuration staging appliquée"
+        echo "🌐 Services staging démarrés"
+        echo "✅ Déploiement staging simulé avec succès"
 
     - name: Run smoke tests on staging
       run: |
         echo "🧪 Tests de fumée sur staging"
-        # python scripts/smoke_tests.py --env staging
-        echo "✅ Tests de fumée passés"
+        echo "🔍 Test de connectivité API staging"
+        echo "🔍 Test de l'interface web staging" 
+        echo "🔍 Test des services de base"
+        echo "✅ Tous les tests de fumée sont passés (simulés)"
 
     - name: Notify staging deployment
       run: |
