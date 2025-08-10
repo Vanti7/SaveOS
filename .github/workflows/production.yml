@@ -125,7 +125,7 @@ jobs:
 
     - name: Build production images
       run: |
-        docker-compose -f docker-compose.prod.yml build
+        docker compose -f docker-compose.prod.yml build
 
     - name: Test production stack startup
       run: |
@@ -135,17 +135,17 @@ jobs:
         export MINIO_ROOT_PASSWORD=testpass123
         export GRAFANA_PASSWORD=testgrafana
         
-        docker-compose -f docker-compose.prod.yml up -d postgres redis minio
+        docker compose -f docker-compose.prod.yml up -d postgres redis minio
         sleep 30
         
         # Vérifier que les services de base sont up
-        docker-compose -f docker-compose.prod.yml ps
+        docker compose -f docker-compose.prod.yml ps
         
         echo "✅ Stack de production testée"
 
     - name: Cleanup
       if: always()
-      run: docker-compose -f docker-compose.prod.yml down -v
+      run: docker compose -f docker-compose.prod.yml down -v
 
   # Analyse de sécurité approfondie
   security-scan:

@@ -31,7 +31,7 @@ jobs:
         TAG=ghcr.io/${{ github.repository_owner }}/saveos:staging-${{ github.sha }}
         
         # Build des images
-        docker-compose build
+        docker compose build
         
         # Tag et push pour staging
         docker tag saveos_api:latest $TAG-api
