@@ -162,15 +162,20 @@ jobs:
         # Build des images
         docker compose build
         
+        # Récupérer les IDs des images construites via Compose
+        API_IMG=$(docker compose images -q api)
+        WORKER_IMG=$(docker compose images -q worker)
+        WEB_IMG=$(docker compose images -q web)
+        
         # Tag et push
-        docker tag saveos_api:latest $API_TAG
-        docker tag saveos_api:latest ghcr.io/${OWNER_LC}/saveos-api:latest
+        docker tag "$API_IMG" "$API_TAG"
+        docker tag "$API_IMG" "ghcr.io/${OWNER_LC}/saveos-api:latest"
         
-        docker tag saveos_worker:latest $WORKER_TAG
-        docker tag saveos_worker:latest ghcr.io/${OWNER_LC}/saveos-worker:latest
+        docker tag "$WORKER_IMG" "$WORKER_TAG"
+        docker tag "$WORKER_IMG" "ghcr.io/${OWNER_LC}/saveos-worker:latest"
         
-        docker tag saveos_web:latest $WEB_TAG
-        docker tag saveos_web:latest ghcr.io/${OWNER_LC}/saveos-web:latest
+        docker tag "$WEB_IMG" "$WEB_TAG"
+        docker tag "$WEB_IMG" "ghcr.io/${OWNER_LC}/saveos-web:latest"
         
         # Push toutes les images
         docker push $API_TAG

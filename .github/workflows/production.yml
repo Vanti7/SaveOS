@@ -225,19 +225,27 @@ jobs:
         # Tag avec la version et latest
         VERSION=$(cat VERSION)
         COMMIT_SHA=${{ github.sha }}
-        
-        # Build des images de production
         OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-        docker build -f Dockerfile.prod --target api-prod -t ghcr.io/${OWNER_LC}/saveos-api:$VERSION .
-        docker build -f Dockerfile.prod --target worker-prod -t ghcr.io/${OWNER_LC}/saveos-worker:$VERSION .
-        docker build -f Dockerfile.prod --target web-prod -t ghcr.io/${OWNER_LC}/saveos-web:$VERSION .
         
-        # Tags latest
-        docker tag ghcr.io/${OWNER_LC}/saveos-api:$VERSION ghcr.io/${OWNER_LC}/saveos-api:latest
-        docker tag ghcr.io/${OWNER_LC}/saveos-worker:$VERSION ghcr.io/${OWNER_LC}/saveos-worker:latest
-        docker tag ghcr.io/${OWNER_LC}/saveos-web:$VERSION ghcr.io/${OWNER_LC}/saveos-web:latest
-        
-        # Push toutes les images
+        # Build via compose pour s'aligner sur les noms d'images générés
+        docker compose -f docker-compose.prod.yml build
+
+        # Récupérer les IDs d'images construites
+        API_IMG=$(docker compose -f docker-compose.prod.yml images -q api)
+        WORKER_IMG=$(docker compose -f docker-compose.prod.yml images -q worker)
+        WEB_IMG=$(docker compose -f docker-compose.prod.yml images -q web)
+
+        # Tag avec version et latest
+        docker tag "$API_IMG" ghcr.io/${OWNER_LC}/saveos-api:$VERSION
+        docker tag "$API_IMG" ghcr.io/${OWNER_LC}/saveos-api:latest
+
+        docker tag "$WORKER_IMG" ghcr.io/${OWNER_LC}/saveos-worker:$VERSION
+        docker tag "$WORKER_IMG" ghcr.io/${OWNER_LC}/saveos-worker:latest
+
+        docker tag "$WEB_IMG" ghcr.io/${OWNER_LC}/saveos-web:$VERSION
+        docker tag "$WEB_IMG" ghcr.io/${OWNER_LC}/saveos-web:latest
+
+        # Push
         docker push ghcr.io/${OWNER_LC}/saveos-api:$VERSION
         docker push ghcr.io/${OWNER_LC}/saveos-api:latest
         docker push ghcr.io/${OWNER_LC}/saveos-worker:$VERSION
