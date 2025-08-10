@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # Base de données PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: saveos_postgres_dev
+    environment:
+      POSTGRES_DB: saveos
+      POSTGRES_USER: saveos
+      POSTGRES_PASSWORD: saveos123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+
+  # Redis pour la queue
+  redis:
+    image: redis:7-alpine
+    container_name: saveos_redis_dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # MinIO pour le stockage S3-compatible
+  minio:
+    image: minio/minio:latest
+    container_name: saveos_minio_dev
+    environment:
+      MINIO_ROOT_USER: saveos
+      MINIO_ROOT_PASSWORD: saveos123456
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+
+  # API SaveOS
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: saveos_api_dev
+    environment:
+      DATABASE_URL: postgresql://saveos:saveos123@postgres:5432/saveos
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./certs:/app/certs
+      - borg_repos:/tmp/borg_repos
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+
+  # Interface Web SaveOS (mode développement)
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    container_name: saveos_web_dev
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  borg_repos:
+    driver: local
+
+networks:
+  default:
+    name: saveos_dev_network

@@ -15,6 +15,8 @@ jobs:
   production-tests:
     name: Tests Production
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     services:
       postgres:
@@ -125,7 +127,7 @@ jobs:
 
     - name: Build production images
       run: |
-        docker-compose -f docker-compose.prod.yml build
+        docker compose -f docker-compose.prod.yml build
 
     - name: Test production stack startup
       run: |
@@ -135,17 +137,17 @@ jobs:
         export MINIO_ROOT_PASSWORD=testpass123
         export GRAFANA_PASSWORD=testgrafana
         
-        docker-compose -f docker-compose.prod.yml up -d postgres redis minio
+        docker compose -f docker-compose.prod.yml up -d postgres redis minio
         sleep 30
         
         # Vérifier que les services de base sont up
-        docker-compose -f docker-compose.prod.yml ps
+        docker compose -f docker-compose.prod.yml ps
         
         echo "✅ Stack de production testée"
 
     - name: Cleanup
       if: always()
-      run: docker-compose -f docker-compose.prod.yml down -v
+      run: docker compose -f docker-compose.prod.yml down -v
 
   # Analyse de sécurité approfondie
   security-scan:
@@ -184,6 +186,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [production-tests, web-production-tests, docker-production-tests, security-scan]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+      packages: write
     
     steps:
     - name: Checkout code
@@ -225,24 +230,30 @@ jobs:
         # Tag avec la version et latest
         VERSION=$(cat VERSION)
         COMMIT_SHA=${{ github.sha }}
+        OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
         
-        # Build des images de production
-        docker build -f Dockerfile.prod --target api-prod -t ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION .
-        docker build -f Dockerfile.prod --target worker-prod -t ghcr.io/${{ github.repository_owner }}/saveos-worker:$VERSION .
-        docker build -f Dockerfile.prod --target web-prod -t ghcr.io/${{ github.repository_owner }}/saveos-web:$VERSION .
-        
-        # Tags latest
-        docker tag ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION ghcr.io/${{ github.repository_owner }}/saveos-api:latest
-        docker tag ghcr.io/${{ github.repository_owner }}/saveos-worker:$VERSION ghcr.io/${{ github.repository_owner }}/saveos-worker:latest
-        docker tag ghcr.io/${{ github.repository_owner }}/saveos-web:$VERSION ghcr.io/${{ github.repository_owner }}/saveos-web:latest
-        
-        # Push toutes les images
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-api:latest
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-worker:$VERSION
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-worker:latest
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-web:$VERSION
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-web:latest
+        # Build via compose et récupérer les IDs des images construites (robuste)
+        API_IMG=$(docker compose -f docker-compose.prod.yml build --quiet api)
+        WORKER_IMG=$(docker compose -f docker-compose.prod.yml build --quiet worker)
+        WEB_IMG=$(docker compose -f docker-compose.prod.yml build --quiet web)
+
+        # Tag avec version et latest
+        docker tag "$API_IMG" ghcr.io/${OWNER_LC}/saveos-api:$VERSION
+        docker tag "$API_IMG" ghcr.io/${OWNER_LC}/saveos-api:latest
+
+        docker tag "$WORKER_IMG" ghcr.io/${OWNER_LC}/saveos-worker:$VERSION
+        docker tag "$WORKER_IMG" ghcr.io/${OWNER_LC}/saveos-worker:latest
+
+        docker tag "$WEB_IMG" ghcr.io/${OWNER_LC}/saveos-web:$VERSION
+        docker tag "$WEB_IMG" ghcr.io/${OWNER_LC}/saveos-web:latest
+
+        # Push
+        docker push ghcr.io/${OWNER_LC}/saveos-api:$VERSION
+        docker push ghcr.io/${OWNER_LC}/saveos-api:latest
+        docker push ghcr.io/${OWNER_LC}/saveos-worker:$VERSION
+        docker push ghcr.io/${OWNER_LC}/saveos-worker:latest
+        docker push ghcr.io/${OWNER_LC}/saveos-web:$VERSION
+        docker push ghcr.io/${OWNER_LC}/saveos-web:latest
 
     - name: Upload production artifacts
       uses: actions/upload-artifact@v3

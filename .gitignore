@@ -142,4 +142,5 @@ test_data/
 
 # OS
 .DS_Store
-Thumbs.db
+Thumbs.dbweb/.next/
+web/next-env.d.ts

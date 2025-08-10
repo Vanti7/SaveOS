@@ -5,13 +5,15 @@ WORKDIR /app
 
 # Copier les fichiers de package
 COPY package.json ./
-COPY package-lock.json* ./
 
 # Installer les dépendances
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # Copier le code source
 COPY . .
+
+# Créer le dossier public s'il n'existe pas
+RUN mkdir -p public
 
 # Variables d'environnement pour le build
 ENV NEXT_PUBLIC_API_URL=https://localhost:8000
@@ -28,8 +30,10 @@ WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copier les fichiers nécessaires depuis le builder
-COPY --from=builder /app/public ./public
+# Créer le dossier public vide (Next.js peut fonctionner sans)
+RUN mkdir -p ./public
+
+# Copier les fichiers de build Next.js
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 

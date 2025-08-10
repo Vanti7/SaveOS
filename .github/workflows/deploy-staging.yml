@@ -10,6 +10,9 @@ jobs:
     name: Déploiement Staging
     runs-on: ubuntu-latest
     environment: staging
+    permissions:
+      contents: read
+      packages: write
     
     steps:
     - name: Checkout code
@@ -27,20 +30,14 @@ jobs:
 
     - name: Build and push staging images
       run: |
-        # Tag staging avec le SHA du commit
-        TAG=ghcr.io/${{ github.repository_owner }}/saveos:staging-${{ github.sha }}
+        # Tag staging avec le SHA du commit (owner en minuscules)
+        OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        TAG=ghcr.io/${OWNER_LC}/saveos:staging-${{ github.sha }}
         
-        # Build des images
-        docker-compose build
-        
-        # Tag et push pour staging
-        docker tag saveos_api:latest $TAG-api
-        docker tag saveos_worker:latest $TAG-worker
-        docker tag saveos_web:latest $TAG-web
-        
-        docker push $TAG-api
-        docker push $TAG-worker
-        docker push $TAG-web
+        # Build & Push direct via Buildx (évite les IDs vides)
+        docker buildx build --file Dockerfile.api --tag "$TAG-api" --push .
+        docker buildx build --file Dockerfile.worker --tag "$TAG-worker" --push .
+        docker buildx build --file web/Dockerfile --tag "$TAG-web" --push web
 
     - name: Deploy to staging environment
       run: |

@@ -101,9 +101,9 @@ jobs:
         # Vérifier que les fichiers existent
         ls -la Dockerfile* docker-compose*
         
-        # Validation syntaxe (si docker-compose est disponible)
-        docker-compose config || echo "⚠️ docker-compose pas disponible"
-        docker-compose -f docker-compose.prod.yml config || echo "⚠️ docker-compose pas disponible"
+        # Validation syntaxe (si docker compose est disponible)
+        docker compose config || echo "⚠️ docker compose pas disponible"
+        docker compose -f docker-compose.prod.yml config || echo "⚠️ docker compose pas disponible"
         
         echo "✅ Fichiers Docker vérifiés"
 
