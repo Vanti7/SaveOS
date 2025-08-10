@@ -1,0 +1,26 @@
+# Dockerfile de développement pour l'interface web SaveOS
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copier les fichiers de package
+COPY package.json ./
+
+# Installer toutes les dépendances (dev + production)
+RUN npm install
+
+# Copier le code source
+COPY . .
+
+# Créer le dossier public s'il n'existe pas
+RUN mkdir -p public
+
+# Exposer le port
+EXPOSE 3000
+
+# Variables d'environnement pour le développement
+ENV NODE_ENV=development
+ENV NEXT_PUBLIC_API_URL=http://localhost:8000
+
+# Commande de développement
+CMD ["npm", "run", "dev"]
