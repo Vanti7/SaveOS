@@ -27,8 +27,8 @@ else
     exit 1
 fi
 
-if docker compose version &> /dev/null; then
-    log_info "Docker Compose installé: $(docker compose version --short)"
+if command -v docker-compose &> /dev/null; then
+    log_info "Docker Compose installé: $(docker-compose --version)"
 else
     log_error "Docker Compose non installé"
     exit 1
@@ -123,7 +123,7 @@ fi
 echo ""
 echo "🐳 Validation de la configuration Docker Compose..."
 
-if docker compose config &> /dev/null; then
+if docker-compose config &> /dev/null; then
     log_info "Configuration Docker Compose valide"
 else
     log_error "Configuration Docker Compose invalide"

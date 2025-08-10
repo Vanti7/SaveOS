@@ -12,13 +12,8 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-if ! command -v docker &> /dev/null; then
-    echo "❌ Docker n'est pas installé. Veuillez l'installer d'abord."
-    exit 1
-fi
-
-if ! docker compose version &> /dev/null; then
-    echo "❌ Docker Compose n'est pas disponible. Veuillez installer Docker avec Compose plugin."
+if ! command -v docker-compose &> /dev/null; then
+    echo "❌ Docker Compose n'est pas installé. Veuillez l'installer d'abord."
     exit 1
 fi
 
@@ -29,15 +24,15 @@ chmod +x scripts/generate_certs.sh
 
 # Arrêter les conteneurs existants s'ils existent
 echo "🛑 Arrêt des conteneurs existants..."
-docker compose down -v 2>/dev/null || true
+docker-compose down -v 2>/dev/null || true
 
 # Construire les images
 echo "🔨 Construction des images Docker..."
-docker compose build
+docker-compose build
 
 # Démarrer les services
 echo "🚀 Démarrage des services..."
-docker compose up -d
+docker-compose up -d
 
 # Attendre que les services soient prêts
 echo "⏳ Attente du démarrage des services..."
@@ -45,7 +40,7 @@ sleep 10
 
 # Vérifier le statut des services
 echo "🔍 Vérification du statut des services..."
-docker compose ps
+docker-compose ps
 
 # Vérifier la santé de l'API
 echo "🩺 Test de santé de l'API..."
@@ -77,7 +72,7 @@ echo "   3. Télécharger et installer un agent sur vos machines"
 echo "   4. Surveiller les sauvegardes depuis l'interface"
 echo ""
 echo "📝 Logs des services:"
-echo "   docker compose logs -f"
+echo "   docker-compose logs -f"
 echo ""
 echo "🛑 Pour arrêter SaveOS:"
-echo "   docker compose down"
+echo "   docker-compose down"

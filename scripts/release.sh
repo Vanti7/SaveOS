@@ -137,7 +137,7 @@ run_tests() {
     # Tests Docker (si disponible)
     if command -v docker &> /dev/null && [ -f "docker-compose.yml" ]; then
         log_step "Validation de la configuration Docker..."
-        if docker compose config > /dev/null 2>&1; then
+        if docker-compose config > /dev/null 2>&1; then
             log_info "Configuration Docker valide"
         else
             log_error "Configuration Docker invalide"
