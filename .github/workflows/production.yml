@@ -227,22 +227,23 @@ jobs:
         COMMIT_SHA=${{ github.sha }}
         
         # Build des images de production
-        docker build -f Dockerfile.prod --target api-prod -t ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION .
-        docker build -f Dockerfile.prod --target worker-prod -t ghcr.io/${{ github.repository_owner }}/saveos-worker:$VERSION .
-        docker build -f Dockerfile.prod --target web-prod -t ghcr.io/${{ github.repository_owner }}/saveos-web:$VERSION .
+        OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        docker build -f Dockerfile.prod --target api-prod -t ghcr.io/${OWNER_LC}/saveos-api:$VERSION .
+        docker build -f Dockerfile.prod --target worker-prod -t ghcr.io/${OWNER_LC}/saveos-worker:$VERSION .
+        docker build -f Dockerfile.prod --target web-prod -t ghcr.io/${OWNER_LC}/saveos-web:$VERSION .
         
         # Tags latest
-        docker tag ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION ghcr.io/${{ github.repository_owner }}/saveos-api:latest
-        docker tag ghcr.io/${{ github.repository_owner }}/saveos-worker:$VERSION ghcr.io/${{ github.repository_owner }}/saveos-worker:latest
-        docker tag ghcr.io/${{ github.repository_owner }}/saveos-web:$VERSION ghcr.io/${{ github.repository_owner }}/saveos-web:latest
+        docker tag ghcr.io/${OWNER_LC}/saveos-api:$VERSION ghcr.io/${OWNER_LC}/saveos-api:latest
+        docker tag ghcr.io/${OWNER_LC}/saveos-worker:$VERSION ghcr.io/${OWNER_LC}/saveos-worker:latest
+        docker tag ghcr.io/${OWNER_LC}/saveos-web:$VERSION ghcr.io/${OWNER_LC}/saveos-web:latest
         
         # Push toutes les images
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-api:latest
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-worker:$VERSION
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-worker:latest
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-web:$VERSION
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-web:latest
+        docker push ghcr.io/${OWNER_LC}/saveos-api:$VERSION
+        docker push ghcr.io/${OWNER_LC}/saveos-api:latest
+        docker push ghcr.io/${OWNER_LC}/saveos-worker:$VERSION
+        docker push ghcr.io/${OWNER_LC}/saveos-worker:latest
+        docker push ghcr.io/${OWNER_LC}/saveos-web:$VERSION
+        docker push ghcr.io/${OWNER_LC}/saveos-web:latest
 
     - name: Upload production artifacts
       uses: actions/upload-artifact@v3

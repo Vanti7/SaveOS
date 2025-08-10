@@ -153,39 +153,40 @@ jobs:
 
     - name: Build and push Docker images
       run: |
-        # Tags pour les images
-        API_TAG="ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION"
-        WORKER_TAG="ghcr.io/${{ github.repository_owner }}/saveos-worker:$VERSION"
-        WEB_TAG="ghcr.io/${{ github.repository_owner }}/saveos-web:$VERSION"
+        # Tags pour les images (owner en minuscules)
+        OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        API_TAG="ghcr.io/${OWNER_LC}/saveos-api:$VERSION"
+        WORKER_TAG="ghcr.io/${OWNER_LC}/saveos-worker:$VERSION"
+        WEB_TAG="ghcr.io/${OWNER_LC}/saveos-web:$VERSION"
         
         # Build des images
         docker compose build
         
         # Tag et push
         docker tag saveos_api:latest $API_TAG
-        docker tag saveos_api:latest ghcr.io/${{ github.repository_owner }}/saveos-api:latest
+        docker tag saveos_api:latest ghcr.io/${OWNER_LC}/saveos-api:latest
         
         docker tag saveos_worker:latest $WORKER_TAG
-        docker tag saveos_worker:latest ghcr.io/${{ github.repository_owner }}/saveos-worker:latest
+        docker tag saveos_worker:latest ghcr.io/${OWNER_LC}/saveos-worker:latest
         
         docker tag saveos_web:latest $WEB_TAG
-        docker tag saveos_web:latest ghcr.io/${{ github.repository_owner }}/saveos-web:latest
+        docker tag saveos_web:latest ghcr.io/${OWNER_LC}/saveos-web:latest
         
         # Push toutes les images
         docker push $API_TAG
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-api:latest
+        docker push ghcr.io/${OWNER_LC}/saveos-api:latest
         
         docker push $WORKER_TAG
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-worker:latest
+        docker push ghcr.io/${OWNER_LC}/saveos-worker:latest
         
         docker push $WEB_TAG
-        docker push ghcr.io/${{ github.repository_owner }}/saveos-web:latest
+        docker push ghcr.io/${OWNER_LC}/saveos-web:latest
 
     - name: Update docker-compose for release
       run: |
         # Créer un docker-compose.yml pour la release avec les bonnes images
         sed "s/build:/# build:/g" docker-compose.yml > docker-compose.release.yml
-        sed -i "s|# build:|image: ghcr.io/${{ github.repository_owner }}/saveos-api:$VERSION|g" docker-compose.release.yml
+        sed -i "s|# build:|image: ghcr.io/${OWNER_LC}/saveos-api:$VERSION|g" docker-compose.release.yml
         
         # Attacher à la release
         gh release upload "v$VERSION" docker-compose.release.yml

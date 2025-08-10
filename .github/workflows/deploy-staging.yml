@@ -27,8 +27,9 @@ jobs:
 
     - name: Build and push staging images
       run: |
-        # Tag staging avec le SHA du commit
-        TAG=ghcr.io/${{ github.repository_owner }}/saveos:staging-${{ github.sha }}
+        # Tag staging avec le SHA du commit (owner en minuscules)
+        OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        TAG=ghcr.io/${OWNER_LC}/saveos:staging-${{ github.sha }}
         
         # Build des images
         docker compose build
