@@ -16,6 +16,17 @@ apiClient.defaults.httpsAgent = new (require('https').Agent)({
   rejectUnauthorized: false
 })
 
+// Client vers les routes proxy Next.js (web/app/api/**), sans baseURL : les
+// chemins relatifs résolvent vers l'origine de la page (jamais l'API
+// distante directement). Ces routes portent le token dashboard côté
+// serveur uniquement — voir web/app/lib/serverApi.ts.
+const dashboardClient = axios.create({
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
 // Types pour l'API
 export interface Agent {
   id: number
@@ -40,6 +51,7 @@ export interface Job {
 export interface Snapshot {
   id: number
   job_id: number
+  agent_id: number
   name: string
   repo_path: string
   size_bytes: number
@@ -63,72 +75,28 @@ export const api = {
 
   // Agents
   async getAgents(): Promise<Agent[]> {
-    // Pour le MVP, on retourne des données simulées
-    // Dans une vraie implémentation, on ferait appel à l'API
-    return [
-      {
-        id: 1,
-        hostname: 'DESKTOP-ABC123',
-        platform: 'windows',
-        status: 'active',
-        last_seen: new Date().toISOString(),
-        created_at: new Date(Date.now() - 86400000).toISOString()
-      },
-      {
-        id: 2,
-        hostname: 'MacBook-Pro',
-        platform: 'darwin',
-        status: 'active',
-        last_seen: new Date(Date.now() - 3600000).toISOString(),
-        created_at: new Date(Date.now() - 172800000).toISOString()
-      },
-      {
-        id: 3,
-        hostname: 'Ubuntu-Server',
-        platform: 'linux',
-        status: 'error',
-        last_seen: new Date(Date.now() - 7200000).toISOString(),
-        created_at: new Date(Date.now() - 259200000).toISOString()
-      }
-    ]
+    const response = await dashboardClient.get('/api/agents')
+    return response.data
   },
 
   // Jobs
-  async getJobs(): Promise<Job[]> {
-    return [
-      {
-        id: 1,
-        agent_id: 1,
-        type: 'backup',
-        status: 'completed',
-        started_at: new Date(Date.now() - 3600000).toISOString(),
-        finished_at: new Date(Date.now() - 1800000).toISOString(),
-        created_at: new Date(Date.now() - 3600000).toISOString()
-      },
-      {
-        id: 2,
-        agent_id: 2,
-        type: 'backup',
-        status: 'running',
-        started_at: new Date(Date.now() - 600000).toISOString(),
-        created_at: new Date(Date.now() - 600000).toISOString()
-      }
-    ]
+  async getJobs(agentId?: number): Promise<Job[]> {
+    const response = await dashboardClient.get('/api/jobs', {
+      params: agentId ? { agent_id: agentId } : {},
+    })
+    return response.data
+  },
+
+  // Job unique (pour le suivi de statut d'une restauration en cours)
+  async getJob(jobId: number): Promise<Job> {
+    const response = await dashboardClient.get(`/api/jobs/${jobId}`)
+    return response.data
   },
 
   // Snapshots
   async getSnapshots(): Promise<Snapshot[]> {
-    return [
-      {
-        id: 1,
-        job_id: 1,
-        name: 'DESKTOP-ABC123_20231215_140000',
-        repo_path: '/tmp/borg_repos/DESKTOP-ABC123',
-        size_bytes: 1024 * 1024 * 512, // 512MB
-        is_full: true,
-        created_at: new Date(Date.now() - 1800000).toISOString()
-      }
-    ]
+    const response = await dashboardClient.get('/api/snapshots')
+    return response.data
   },
 
   // Téléchargement d'agent
