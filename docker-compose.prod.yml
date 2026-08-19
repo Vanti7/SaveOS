@@ -13,9 +13,12 @@ services:
       MINIO_URL: ${MINIO_URL}
       API_WORKERS: ${API_WORKERS:-4}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN}
+      RESTORE_PACKAGE_DIR: ${RESTORE_PACKAGE_DIR:-/tmp/restore_packages}
     volumes:
       - ./certs:/app/certs:ro
       - borg_repos:/tmp/borg_repos
+      - restore_packages:/tmp/restore_packages
     ports:
       - "8000:8000"
     deploy:
@@ -55,8 +58,10 @@ services:
       REDIS_URL: ${REDIS_URL}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      RESTORE_PACKAGE_DIR: ${RESTORE_PACKAGE_DIR:-/tmp/restore_packages}
     volumes:
       - borg_repos:/tmp/borg_repos
+      - restore_packages:/tmp/restore_packages
     deploy:
       replicas: ${WORKER_REPLICAS:-3}
       resources:
@@ -86,6 +91,7 @@ services:
     container_name: saveos_web_prod
     environment:
       NEXT_PUBLIC_API_URL: ${API_URL:-https://api.saveos.com}
+      DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN}
       NODE_ENV: production
     ports:
       - "3000:3000"
@@ -248,6 +254,8 @@ volumes:
   minio_data:
     driver: local
   borg_repos:
+    driver: local
+  restore_packages:
     driver: local
   letsencrypt_data:
     driver: local

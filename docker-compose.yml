@@ -60,9 +60,14 @@ services:
     environment:
       DATABASE_URL: postgresql://saveos:saveos123@postgres:5432/saveos
       REDIS_URL: redis://redis:6379/0
+      # Token statique du tableau de bord (pont d'auth temporaire MVP, voir
+      # docs/adr/0001-restauration-granulaire-mvp.md). À définir en .env.
+      DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN:-}
+      RESTORE_PACKAGE_DIR: /tmp/restore_packages
     volumes:
       - ./certs:/app/certs
       - borg_repos:/tmp/borg_repos
+      - restore_packages:/tmp/restore_packages
     ports:
       - "8000:8000"
     depends_on:
@@ -85,8 +90,10 @@ services:
     environment:
       DATABASE_URL: postgresql://saveos:saveos123@postgres:5432/saveos
       REDIS_URL: redis://redis:6379/0
+      RESTORE_PACKAGE_DIR: /tmp/restore_packages
     volumes:
       - borg_repos:/tmp/borg_repos
+      - restore_packages:/tmp/restore_packages
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,6 +113,9 @@ services:
       # Utilisée côté navigateur : doit être une adresse joignable depuis le poste client.
       # Surchargez avec PUBLIC_API_URL (ex: https://mon-domaine.example:8000) hors environnement local.
       NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-https://localhost:8000}
+      # Côté serveur uniquement (routes /app/api/**) : ne jamais préfixer par NEXT_PUBLIC_,
+      # sous peine d'exposer le token au navigateur. Doit être identique à celui de l'API.
+      DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN:-}
       NODE_ENV: production
     ports:
       - "3000:3000"
@@ -126,6 +136,8 @@ volumes:
   minio_data:
     driver: local
   borg_repos:
+    driver: local
+  restore_packages:
     driver: local
 
 networks:

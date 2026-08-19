@@ -20,7 +20,7 @@ from api.schemas import (
     AgentRegister, AgentResponse, AgentHeartbeat, AgentStats,
     JobCreate, JobResponse, SnapshotResponse
 )
-from api.auth import AuthManager, get_current_agent
+from api.auth import AuthManager, get_current_agent, get_current_principal, Principal
 from worker.tasks import enqueue_backup_job
 
 # Configuration
@@ -219,48 +219,50 @@ async def create_backup_job(
 @app.get(f"{API_PREFIX}/backup/{{agent_id}}/snapshots", response_model=List[SnapshotResponse])
 async def list_agent_snapshots(
     agent_id: int,
-    current_agent: Agent = Depends(get_current_agent),
+    principal: Principal = Depends(get_current_principal),
     db: Session = Depends(get_db)
 ):
     """Liste les snapshots d'un agent"""
-    
-    # Vérifier que l'agent demande ses propres snapshots
-    if agent_id != current_agent.id:
+
+    # Un agent ne peut consulter que ses propres snapshots ; le tableau de
+    # bord peut consulter ceux de n'importe quel agent.
+    if not principal.can_act_on_agent(agent_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Un agent ne peut consulter que ses propres snapshots"
         )
-    
+
     # Récupérer les snapshots
     snapshots = db.query(Snapshot).join(Job, Snapshot.job_id == Job.id).filter(
         Job.agent_id == agent_id
     ).order_by(Snapshot.created_at.desc()).all()
-    
+
     return snapshots
 
 @app.get(f"{API_PREFIX}/jobs/{{job_id}}", response_model=JobResponse)
 async def get_job_status(
     job_id: int,
-    current_agent: Agent = Depends(get_current_agent),
+    principal: Principal = Depends(get_current_principal),
     db: Session = Depends(get_db)
 ):
     """Récupère le statut d'un job"""
-    
+
     job = db.query(Job).filter(Job.id == job_id).first()
-    
+
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job non trouvé"
         )
-    
-    # Vérifier que l'agent demande ses propres jobs
-    if job.agent_id != current_agent.id:
+
+    # Un agent ne peut consulter que ses propres jobs ; le tableau de bord
+    # peut consulter ceux de n'importe quel agent.
+    if not principal.can_act_on_agent(job.agent_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Un agent ne peut consulter que ses propres jobs"
         )
-    
+
     return job
 
 # === ENDPOINTS TÉLÉCHARGEMENT D'AGENTS ===

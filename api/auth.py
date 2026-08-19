@@ -38,19 +38,73 @@ async def get_current_agent(
     db: Session = Depends(get_db)
 ) -> Agent:
     """Récupère l'agent actuel à partir du token d'authentification"""
-    
+
     token = credentials.credentials
     agent = AuthManager.verify_agent_token(db, token)
-    
+
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token d'authentification invalide",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     # Mettre à jour le last_seen
     agent.last_seen = datetime.utcnow()
     db.commit()
-    
+
     return agent
+
+
+class Principal:
+    """Identité de l'appelant authentifié : soit un agent, soit le tableau de
+    bord (token admin statique, pont d'auth temporaire MVP — voir
+    docs/adr/0001-restauration-granulaire-mvp.md)."""
+
+    def __init__(self, agent: Optional[Agent] = None, is_dashboard: bool = False):
+        self.agent = agent
+        self.is_dashboard = is_dashboard
+
+    def can_act_on_agent(self, agent_id: int) -> bool:
+        """Le tableau de bord peut agir pour n'importe quel agent ;
+        un agent ne peut agir que pour lui-même."""
+        return self.is_dashboard or (self.agent is not None and self.agent.id == agent_id)
+
+
+async def get_current_principal(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> Principal:
+    """Authentifie soit un agent (token existant), soit le tableau de bord
+    (token admin statique DASHBOARD_API_TOKEN)."""
+
+    token = credentials.credentials
+    dashboard_token = os.getenv("DASHBOARD_API_TOKEN")
+
+    if dashboard_token and secrets.compare_digest(token, dashboard_token):
+        return Principal(is_dashboard=True)
+
+    agent = AuthManager.verify_agent_token(db, token)
+    if agent:
+        agent.last_seen = datetime.utcnow()
+        db.commit()
+        return Principal(agent=agent)
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Token d'authentification invalide",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def require_dashboard(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> None:
+    """Réserve un endpoint au tableau de bord (token admin statique)."""
+
+    dashboard_token = os.getenv("DASHBOARD_API_TOKEN")
+    if not dashboard_token or not secrets.compare_digest(credentials.credentials, dashboard_token):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Réservé au tableau de bord",
+        )
