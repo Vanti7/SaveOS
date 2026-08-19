@@ -101,7 +101,11 @@ services:
       dockerfile: Dockerfile
     container_name: saveos_web
     environment:
-      NEXT_PUBLIC_API_URL: https://api:8000
+      # Utilisée côté serveur (SSR, rewrite Next.js) : nom DNS interne au réseau Docker.
+      API_URL: https://api:8000
+      # Utilisée côté navigateur : doit être une adresse joignable depuis le poste client.
+      # Surchargez avec PUBLIC_API_URL (ex: https://mon-domaine.example:8000) hors environnement local.
+      NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-https://localhost:8000}
       NODE_ENV: production
     ports:
       - "3000:3000"
