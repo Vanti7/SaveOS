@@ -149,7 +149,7 @@ async def get_agent_stats(
     """Récupère les statistiques de l'agent"""
     
     # Compter les snapshots
-    snapshots = db.query(Snapshot).join(Job).filter(
+    snapshots = db.query(Snapshot).join(Job, Snapshot.job_id == Job.id).filter(
         Job.agent_id == current_agent.id
     ).all()
     
@@ -193,7 +193,7 @@ async def create_backup_job(
     new_job = Job(
         agent_id=current_agent.id,
         type=job_data.type.value,
-        config=str(job_data.config) if job_data.config else None,
+        config=json.dumps(job_data.config) if job_data.config else None,
         status="pending"
     )
     
@@ -232,7 +232,7 @@ async def list_agent_snapshots(
         )
     
     # Récupérer les snapshots
-    snapshots = db.query(Snapshot).join(Job).filter(
+    snapshots = db.query(Snapshot).join(Job, Snapshot.job_id == Job.id).filter(
         Job.agent_id == agent_id
     ).order_by(Snapshot.created_at.desc()).all()
     
