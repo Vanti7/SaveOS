@@ -61,6 +61,11 @@ Les services sont accessibles aux adresses suivantes :
 - **Redis** : localhost:6379
 - **MinIO Console** : http://localhost:9001 (saveos/saveos123456)
 
+### Variables d'environnement notables
+
+- `DASHBOARD_API_TOKEN` : token statique donnant au tableau de bord web un accès complet à l'API (pont d'authentification temporaire MVP — voir [docs/adr/0001-restauration-granulaire-mvp.md](docs/adr/0001-restauration-granulaire-mvp.md)). Même valeur côté `api` et `web`, jamais préfixée par `NEXT_PUBLIC_`.
+- `RESTORE_PACKAGE_DIR` : dossier partagé (`api` + `worker`) où sont stockés les paquets zip générés par une restauration. Défaut : `/tmp/restore_packages`.
+
 ### Agent
 
 L'agent se configure automatiquement lors de la première utilisation. La configuration est stockée dans :
@@ -245,7 +250,7 @@ Pour le support et les questions :
 - [x] Interface web React ✅
 - [x] Téléchargement d'agents depuis l'interface ✅
 - [x] Provisioning automatique des agents ✅
-- [ ] Restauration granulaire via l'interface
+- [x] Restauration granulaire via l'interface ✅
 - [ ] Monitoring avancé (Grafana)
 - [ ] Tests automatisés
 - [ ] Packaging des agents (exe/dmg/deb)

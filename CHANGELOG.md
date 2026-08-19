@@ -8,7 +8,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Prévu
-- Restauration granulaire via interface web
 - Monitoring avancé avec Grafana
 - Tests automatisés complets
 - Packaging des agents (exe/dmg/deb)
