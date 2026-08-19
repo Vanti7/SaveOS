@@ -4,9 +4,12 @@ Agent CLI SaveOS - Interface en ligne de commande pour l'agent de sauvegarde
 """
 import click
 import json
+import os
+import tempfile
 import time
 import sys
 import threading
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
@@ -217,7 +220,9 @@ def daemon(ctx, interval):
                 click.echo(f"💓 Heartbeat envoyé à {timestamp}")
             else:
                 click.echo(f"❌ Erreur heartbeat: {heartbeat_result['error']}", err=True)
-            
+
+            _apply_pending_restores(client)
+
             time.sleep(interval)
     except KeyboardInterrupt:
         click.echo("\n🛑 Arrêt du daemon")
@@ -244,6 +249,62 @@ def config_show(ctx):
         click.echo(f"   Token: Configuré ({token[:8]}...)")
     else:
         click.echo("   Token: Non configuré")
+
+@cli.command()
+@click.pass_context
+def apply_restores(ctx):
+    """Récupère et applique les restaurations en attente pour cet agent"""
+    config_manager = ctx.obj['config']
+    config = config_manager.load_config()
+    token = config_manager.get_token()
+
+    if not token:
+        click.echo("❌ Agent non enregistré. Utilisez 'register' d'abord.", err=True)
+        sys.exit(1)
+
+    client = SaveOSAPIClient(config['api_url'], token, config['verify_ssl'])
+    _apply_pending_restores(client)
+
+def _apply_pending_restores(client: SaveOSAPIClient) -> None:
+    """Récupère les restaurations en attente (status=ready_for_agent) et les
+    applique localement : télécharge le paquet zip déjà extrait par le
+    worker et le décompresse vers restore_path."""
+
+    pending_result = client.list_pending_restores()
+    if not pending_result['success']:
+        click.echo(f"❌ Erreur lors de la récupération des restaurations en attente: {pending_result['error']}", err=True)
+        return
+
+    for pending in pending_result['data']:
+        job_id = pending['id']
+        restore_path = (pending.get('config') or {}).get('restore_path')
+
+        if not restore_path:
+            client.report_job_status(job_id, 'failed', "restore_path manquant dans la configuration du job")
+            continue
+
+        click.echo(f"📥 Restauration en attente (job {job_id}) -> {restore_path}")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            zip_path = str(Path(tmp_dir) / f"restore_{job_id}.zip")
+            download_result = client.download_restore_package(job_id, zip_path)
+
+            if not download_result['success']:
+                click.echo(f"❌ Échec du téléchargement du paquet: {download_result['error']}", err=True)
+                client.report_job_status(job_id, 'failed', download_result['error'])
+                continue
+
+            try:
+                os.makedirs(restore_path, exist_ok=True)
+                with zipfile.ZipFile(zip_path) as zf:
+                    zf.extractall(restore_path)
+            except Exception as e:
+                click.echo(f"❌ Échec de l'extraction: {e}", err=True)
+                client.report_job_status(job_id, 'failed', str(e))
+                continue
+
+        client.report_job_status(job_id, 'completed')
+        click.echo(f"✅ Restauration appliquée (job {job_id})")
 
 def _format_bytes(bytes_count: int) -> str:
     """Formate un nombre d'octets en format lisible"""
