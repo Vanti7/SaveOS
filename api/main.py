@@ -11,7 +11,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 import json
 
@@ -20,7 +20,8 @@ from api.schemas import (
     AgentRegister, AgentResponse, AgentHeartbeat, AgentStats,
     JobCreate, JobResponse, SnapshotResponse
 )
-from api.auth import AuthManager, get_current_agent, get_current_principal, Principal
+from api.auth import AuthManager, get_current_agent, get_current_principal, require_dashboard, Principal
+from api.routers.restore import router as restore_router
 from worker.tasks import enqueue_backup_job
 
 # Configuration
@@ -42,6 +43,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(restore_router, prefix=API_PREFIX, tags=["restore"])
 
 @app.on_event("startup")
 async def startup_event():
@@ -232,12 +235,20 @@ async def list_agent_snapshots(
             detail="Un agent ne peut consulter que ses propres snapshots"
         )
 
-    # Récupérer les snapshots
+    # Récupérer les snapshots (agent_id n'est pas une colonne de Snapshot,
+    # il vient du job qui l'a produit)
     snapshots = db.query(Snapshot).join(Job, Snapshot.job_id == Job.id).filter(
         Job.agent_id == agent_id
     ).order_by(Snapshot.created_at.desc()).all()
 
-    return snapshots
+    return [
+        SnapshotResponse(
+            id=s.id, job_id=s.job_id, agent_id=agent_id, name=s.name,
+            repo_path=s.repo_path, size_bytes=s.size_bytes, is_full=s.is_full,
+            checksum=s.checksum, created_at=s.created_at,
+        )
+        for s in snapshots
+    ]
 
 @app.get(f"{API_PREFIX}/jobs/{{job_id}}", response_model=JobResponse)
 async def get_job_status(
@@ -264,6 +275,49 @@ async def get_job_status(
         )
 
     return job
+
+# === ENDPOINTS TABLEAU DE BORD (liste-tout, réservés au dashboard) ===
+
+@app.get(f"{API_PREFIX}/agents", response_model=List[AgentResponse])
+async def list_all_agents(
+    _: None = Depends(require_dashboard),
+    db: Session = Depends(get_db)
+):
+    """Liste tous les agents (tableau de bord uniquement)"""
+    return db.query(Agent).order_by(Agent.created_at.desc()).all()
+
+@app.get(f"{API_PREFIX}/jobs", response_model=List[JobResponse])
+async def list_all_jobs(
+    agent_id: Optional[int] = None,
+    _: None = Depends(require_dashboard),
+    db: Session = Depends(get_db)
+):
+    """Liste tous les jobs, éventuellement filtrés par agent (tableau de bord uniquement)"""
+    query = db.query(Job)
+    if agent_id is not None:
+        query = query.filter(Job.agent_id == agent_id)
+    return query.order_by(Job.created_at.desc()).all()
+
+@app.get(f"{API_PREFIX}/snapshots", response_model=List[SnapshotResponse])
+async def list_all_snapshots(
+    _: None = Depends(require_dashboard),
+    db: Session = Depends(get_db)
+):
+    """Liste tous les snapshots, tous agents confondus (tableau de bord uniquement)"""
+    rows = (
+        db.query(Snapshot, Job.agent_id)
+        .join(Job, Snapshot.job_id == Job.id)
+        .order_by(Snapshot.created_at.desc())
+        .all()
+    )
+    return [
+        SnapshotResponse(
+            id=s.id, job_id=s.job_id, agent_id=agent_id, name=s.name,
+            repo_path=s.repo_path, size_bytes=s.size_bytes, is_full=s.is_full,
+            checksum=s.checksum, created_at=s.created_at,
+        )
+        for s, agent_id in rows
+    ]
 
 # === ENDPOINTS TÉLÉCHARGEMENT D'AGENTS ===
 
