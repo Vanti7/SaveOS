@@ -1,4 +1,5 @@
 import axios from 'axios'
+import fileDownload from 'js-file-download'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://localhost:8000'
 
@@ -41,7 +42,7 @@ export interface Job {
   id: number
   agent_id: number
   type: 'backup' | 'restore' | 'check'
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: 'pending' | 'running' | 'ready_for_agent' | 'completed' | 'failed'
   started_at?: string
   finished_at?: string
   error_message?: string
@@ -57,6 +58,28 @@ export interface Snapshot {
   size_bytes: number
   is_full: boolean
   created_at: string
+}
+
+export interface ArchiveEntry {
+  path: string
+  type?: string
+  size?: number
+  mtime?: string
+}
+
+export interface ArchiveBrowseResponse {
+  path: string
+  entries: ArchiveEntry[]
+}
+
+export type RestoreTarget = 'download' | 'agent'
+
+export interface RestoreJobCreate {
+  agent_id: number
+  snapshot_id: number
+  selected_paths: string[]
+  target: RestoreTarget
+  restore_path?: string
 }
 
 // API Functions
@@ -97,6 +120,29 @@ export const api = {
   async getSnapshots(): Promise<Snapshot[]> {
     const response = await dashboardClient.get('/api/snapshots')
     return response.data
+  },
+
+  // Parcourt le contenu d'un snapshot à un chemin donné (un niveau de dossier à la fois)
+  async browseSnapshot(snapshotId: number, agentId: number, path: string = ''): Promise<ArchiveBrowseResponse> {
+    const response = await dashboardClient.post(`/api/snapshots/${snapshotId}/browse`, {
+      agent_id: agentId,
+      path,
+    })
+    return response.data
+  },
+
+  // Crée un job de restauration granulaire
+  async createRestoreJob(payload: RestoreJobCreate): Promise<Job> {
+    const response = await dashboardClient.post('/api/restore', payload)
+    return response.data
+  },
+
+  // Télécharge le paquet résultant d'une restauration terminée
+  async downloadRestorePackage(jobId: number, filename: string): Promise<void> {
+    const response = await dashboardClient.get(`/api/restore/${jobId}/download`, {
+      responseType: 'blob',
+    })
+    fileDownload(response.data, filename)
   },
 
   // Téléchargement d'agent

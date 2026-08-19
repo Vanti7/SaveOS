@@ -39,6 +39,8 @@ export default function MonitoringPage() {
         return <ActivityIcon className="w-5 h-5 text-primary-500 animate-pulse" />
       case 'failed':
         return <AlertTriangleIcon className="w-5 h-5 text-error-500" />
+      case 'ready_for_agent':
+        return <ClockIcon className="w-5 h-5 text-primary-500" />
       default:
         return <ClockIcon className="w-5 h-5 text-warning-500" />
     }
@@ -54,6 +56,8 @@ export default function MonitoringPage() {
         return 'status-failed'
       case 'pending':
         return 'status-pending'
+      case 'ready_for_agent':
+        return 'status-running'
       default:
         return 'status-inactive'
     }
@@ -69,6 +73,8 @@ export default function MonitoringPage() {
         return 'Échoué'
       case 'pending':
         return 'En attente'
+      case 'ready_for_agent':
+        return "En attente de l'agent"
       default:
         return 'Inconnu'
     }
