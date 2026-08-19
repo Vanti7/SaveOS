@@ -72,19 +72,22 @@ class Job(Base):
     status = Column(String(50), default="pending")  # pending, running, completed, failed
     started_at = Column(DateTime)
     finished_at = Column(DateTime)
-    snapshot_id = Column(Integer, ForeignKey("snapshots.id"), nullable=True)
+    snapshot_id = Column(Integer, ForeignKey("snapshots.id"), nullable=True)  # backup: snapshot résultant ; restore: snapshot source
     error_message = Column(Text)
     config = Column(Text)  # Configuration spécifique du job
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # Relations
     agent = relationship("Agent", back_populates="jobs")
-    snapshot = relationship("Snapshot", back_populates="job")
+    # Snapshot(s) produit(s) par ce job (lien via Snapshot.job_id)
+    snapshots = relationship("Snapshot", foreign_keys="Snapshot.job_id", back_populates="job")
+    # Snapshot source d'un job de restauration (lien via Job.snapshot_id) ; pas de relation inverse nécessaire
+    source_snapshot = relationship("Snapshot", foreign_keys=[snapshot_id])
 
 class Snapshot(Base):
     """Table des snapshots/archives"""
     __tablename__ = "snapshots"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False)
     name = Column(String(255), nullable=False)  # Nom du snapshot Borg
@@ -93,9 +96,9 @@ class Snapshot(Base):
     is_full = Column(Boolean, default=True)
     checksum = Column(String(128))
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # Relations
-    job = relationship("Job", back_populates="snapshot")
+    job = relationship("Job", foreign_keys=[job_id], back_populates="snapshots")
 
 def get_db():
     """Générateur de session de base de données"""

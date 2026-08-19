@@ -47,9 +47,12 @@ services:
     environment:
       DATABASE_URL: postgresql://saveos:saveos123@postgres:5432/saveos
       REDIS_URL: redis://redis:6379/0
+      DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN:-}
+      RESTORE_PACKAGE_DIR: /tmp/restore_packages
     volumes:
       - ./certs:/app/certs
       - borg_repos:/tmp/borg_repos
+      - restore_packages:/tmp/restore_packages
     ports:
       - "8000:8000"
     depends_on:
@@ -64,6 +67,7 @@ services:
     container_name: saveos_web_dev
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN:-}
       NODE_ENV: development
     ports:
       - "3000:3000"
@@ -81,6 +85,8 @@ volumes:
   minio_data:
     driver: local
   borg_repos:
+    driver: local
+  restore_packages:
     driver: local
 
 networks:

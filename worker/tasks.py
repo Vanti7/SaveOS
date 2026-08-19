@@ -3,10 +3,11 @@ Tâches de traitement pour le worker SaveOS
 """
 import os
 import json
+import shutil
 import subprocess
 import tempfile
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 import redis
 from rq import Queue, Worker, Connection
 from sqlalchemy.orm import sessionmaker
@@ -17,6 +18,9 @@ from api.database import Job, Snapshot, Agent
 # Configuration Redis et base de données
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://saveos:saveos123@localhost:5432/saveos")
+
+DEFAULT_BORG_PASSPHRASE = "default_passphrase_change_me"
+RESTORE_PACKAGE_DIR = os.getenv("RESTORE_PACKAGE_DIR", "/tmp/restore_packages")
 
 redis_conn = redis.from_url(REDIS_URL)
 queue = Queue('saveos_jobs', connection=redis_conn)
@@ -120,6 +124,75 @@ class BorgManager:
                 'error': str(e)
             }
     
+    def list_archive_contents(self, archive_name: str) -> Dict[str, Any]:
+        """Liste le contenu (fichiers/dossiers) d'une archive Borg"""
+        try:
+            archive_path = f"{self.repo_path}::{archive_name}"
+            cmd = ['borg', 'list', '--json-lines', archive_path]
+            result = subprocess.run(
+                cmd,
+                env=self.env,
+                capture_output=True,
+                text=True,
+                check=False
+            )
+
+            entries = []
+            if result.returncode == 0 and result.stdout:
+                for line in result.stdout.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    entries.append({
+                        'path': entry.get('path'),
+                        'type': entry.get('type'),
+                        'size': entry.get('size'),
+                        'mtime': entry.get('mtime'),
+                    })
+
+            return {
+                'success': result.returncode == 0,
+                'entries': entries,
+                'stderr': result.stderr
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def extract(self, archive_name: str, target_dir: str, paths: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Extrait une archive (ou des chemins précis de celle-ci) vers target_dir"""
+        try:
+            os.makedirs(target_dir, exist_ok=True)
+            archive_path = f"{self.repo_path}::{archive_name}"
+            cmd = ['borg', 'extract', archive_path] + (paths or [])
+
+            result = subprocess.run(
+                cmd,
+                env=self.env,
+                cwd=target_dir,
+                capture_output=True,
+                text=True,
+                check=False
+            )
+
+            return {
+                'success': result.returncode == 0,
+                'stdout': result.stdout,
+                'stderr': result.stderr,
+                'returncode': result.returncode
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
     def _parse_borg_stats(self, stderr: str) -> Dict[str, Any]:
         """Parse les statistiques de sortie de Borg"""
         stats = {}
@@ -198,7 +271,7 @@ def process_backup_job(job_id: int) -> Dict[str, Any]:
         # Configuration par défaut
         source_paths = config.get('source_paths', ['/tmp/test'])  # Chemin par défaut pour test
         repo_path = config.get('repo_path', f'/tmp/borg_repos/{agent.hostname}')
-        passphrase = config.get('passphrase', 'default_passphrase_change_me')
+        passphrase = config.get('passphrase', DEFAULT_BORG_PASSPHRASE)
         
         # Créer le répertoire du repository s'il n'existe pas
         os.makedirs(os.path.dirname(repo_path), exist_ok=True)
@@ -282,7 +355,114 @@ def enqueue_backup_job(job_id: int) -> str:
     job = queue.enqueue(
         process_backup_job,
         job_id,
-        timeout='1h',  # Timeout de 1 heure
+        job_timeout='1h'
+    )
+    return job.id
+
+def process_restore_job(job_id: int) -> Dict[str, Any]:
+    """Traite un job de restauration : extrait les chemins sélectionnés d'un
+    snapshot puis les empaquette en zip, prêt à être téléchargé (target=download)
+    ou récupéré par l'agent (target=agent)."""
+
+    db = SessionLocal()
+    result = {'success': False, 'message': ''}
+    extract_dir = None
+
+    try:
+        # Récupérer le job
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            result['message'] = f"Job {job_id} non trouvé"
+            return result
+
+        # Marquer le job comme en cours
+        job.status = "running"
+        job.started_at = datetime.utcnow()
+        db.commit()
+
+        # Parser la configuration du job
+        config = {}
+        if job.config:
+            try:
+                config = json.loads(job.config)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        snapshot_id = config.get('snapshot_id')
+        selected_paths = config.get('selected_paths') or []
+        target = config.get('target', 'download')
+        passphrase = config.get('passphrase', DEFAULT_BORG_PASSPHRASE)
+
+        # Récupérer le snapshot source (repo/archive viennent de là, pas de défauts)
+        snapshot = db.query(Snapshot).filter(Snapshot.id == snapshot_id).first()
+        if not snapshot:
+            job.status = "failed"
+            job.error_message = f"Snapshot {snapshot_id} non trouvé"
+            job.finished_at = datetime.utcnow()
+            db.commit()
+            result['message'] = job.error_message
+            return result
+
+        job.snapshot_id = snapshot.id
+        db.commit()
+
+        borg = BorgManager(snapshot.repo_path, passphrase)
+
+        # Extraire les chemins sélectionnés vers un dossier temporaire
+        extract_dir = tempfile.mkdtemp(prefix=f"restore_{job_id}_")
+        extract_result = borg.extract(snapshot.name, extract_dir, selected_paths or None)
+
+        if not extract_result['success']:
+            job.status = "failed"
+            job.error_message = extract_result.get('stderr', extract_result.get('error', 'Erreur inconnue'))
+            job.finished_at = datetime.utcnow()
+            db.commit()
+            result['message'] = f"Échec de l'extraction: {job.error_message}"
+            return result
+
+        # Empaqueter le résultat en zip sur le volume partagé
+        os.makedirs(RESTORE_PACKAGE_DIR, exist_ok=True)
+        package_base = os.path.join(RESTORE_PACKAGE_DIR, str(job_id))
+        package_path = shutil.make_archive(package_base, 'zip', extract_dir)
+
+        config['package_path'] = package_path
+        job.config = json.dumps(config)
+
+        if target == 'agent':
+            # Le paquet est prêt : en attente de récupération par l'agent
+            job.status = "ready_for_agent"
+        else:
+            job.status = "completed"
+            job.finished_at = datetime.utcnow()
+
+        db.commit()
+
+        result['success'] = True
+        result['message'] = f"Extraction réussie: {package_path}"
+        result['package_path'] = package_path
+
+    except Exception as e:
+        # Erreur générale
+        if 'job' in locals():
+            job.status = "failed"
+            job.error_message = str(e)
+            job.finished_at = datetime.utcnow()
+            db.commit()
+
+        result['message'] = f"Erreur lors du traitement du job de restauration: {str(e)}"
+
+    finally:
+        if extract_dir:
+            shutil.rmtree(extract_dir, ignore_errors=True)
+        db.close()
+
+    return result
+
+def enqueue_restore_job(job_id: int) -> str:
+    """Ajoute un job de restauration à la queue"""
+    job = queue.enqueue(
+        process_restore_job,
+        job_id,
         job_timeout='1h'
     )
     return job.id

@@ -6,10 +6,12 @@ import { api, Snapshot } from '../lib/api'
 import { formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import toast from 'react-hot-toast'
+import RestoreModal from '../components/RestoreModal'
 
 export default function SnapshotsPage() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([])
   const [loading, setLoading] = useState(true)
+  const [restoreSnapshot, setRestoreSnapshot] = useState<Snapshot | null>(null)
 
   useEffect(() => {
     fetchSnapshots()
@@ -154,10 +156,16 @@ export default function SnapshotsPage() {
                     })}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button className="text-primary-600 hover:text-primary-900 mr-3">
+                    <button
+                      className="text-primary-600 hover:text-primary-900 mr-3"
+                      onClick={() => setRestoreSnapshot(snapshot)}
+                    >
                       Parcourir
                     </button>
-                    <button className="text-success-600 hover:text-success-900 mr-3">
+                    <button
+                      className="text-success-600 hover:text-success-900 mr-3"
+                      onClick={() => setRestoreSnapshot(snapshot)}
+                    >
                       <DownloadIcon className="w-4 h-4 inline mr-1" />
                       Restaurer
                     </button>
@@ -183,6 +191,13 @@ export default function SnapshotsPage() {
           </div>
         )}
       </div>
+
+      {restoreSnapshot && (
+        <RestoreModal
+          snapshot={restoreSnapshot}
+          onClose={() => setRestoreSnapshot(null)}
+        />
+      )}
     </div>
   )
 }

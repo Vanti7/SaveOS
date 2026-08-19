@@ -182,6 +182,82 @@ class SaveOSAPIClient:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
+    def list_pending_restores(self) -> Dict[str, Any]:
+        """Liste les restaurations en attente de récupération pour cet agent"""
+        if not self.token:
+            return {"success": False, "error": "Token d'authentification requis"}
+
+        try:
+            response = self.session.get(
+                f"{self.api_url}/api/v1/agents/me/pending-restores",
+                verify=self.verify_ssl,
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}: {response.text}"
+                }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def download_restore_package(self, job_id: int, dest_path: str) -> Dict[str, Any]:
+        """Télécharge le paquet zip d'une restauration vers dest_path"""
+        if not self.token:
+            return {"success": False, "error": "Token d'authentification requis"}
+
+        try:
+            response = self.session.get(
+                f"{self.api_url}/api/v1/restore/{job_id}/download",
+                verify=self.verify_ssl,
+                timeout=300,
+                stream=True
+            )
+
+            if response.status_code == 200:
+                with open(dest_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                return {"success": True, "data": {"path": dest_path}}
+            else:
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}: {response.text}"
+                }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def report_job_status(self, job_id: int, status: str, error_message: Optional[str] = None) -> Dict[str, Any]:
+        """Rapporte le résultat (completed/failed) d'un job exécuté localement"""
+        if not self.token:
+            return {"success": False, "error": "Token d'authentification requis"}
+
+        data = {"status": status}
+        if error_message:
+            data["error_message"] = error_message
+
+        try:
+            response = self.session.post(
+                f"{self.api_url}/api/v1/jobs/{job_id}/agent-report",
+                json=data,
+                verify=self.verify_ssl,
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}: {response.text}"
+                }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
     def health_check(self) -> Dict[str, Any]:
         """Vérifie la santé de l'API"""
         try:

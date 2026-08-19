@@ -6,9 +6,20 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.2.0] - 2026-08-19
+
+### ✨ Nouvelles fonctionnalités
+
+- Restauration granulaire : sélection de fichiers/dossiers dans un snapshot, téléchargement navigateur ou dépôt direct sur la machine agent
+- Navigation dans le contenu d'une archive Borg depuis le tableau de bord
+- Authentification double agent/tableau de bord (token dashboard)
+- Pages Agents/Jobs/Snapshots du tableau de bord connectées à l'API réelle (fin des données simulées)
+- Correction : sérialisation JSON de Job.config, ambiguïté de clé étrangère Job/Snapshot, kwarg RQ invalide
+
+---
+
 
 ### Prévu
-- Restauration granulaire via interface web
 - Monitoring avancé avec Grafana
 - Tests automatisés complets
 - Packaging des agents (exe/dmg/deb)

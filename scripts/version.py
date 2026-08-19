@@ -23,7 +23,7 @@ class VersionManager:
     def get_current_version(self) -> str:
         """Récupère la version actuelle"""
         if self.version_file.exists():
-            return self.version_file.read_text().strip()
+            return self.version_file.read_text(encoding='utf-8').strip()
         return "0.0.0"
     
     def parse_version(self, version: str) -> dict:
@@ -84,31 +84,31 @@ class VersionManager:
     def update_version_files(self, new_version: str):
         """Met à jour tous les fichiers de version"""
         # VERSION
-        self.version_file.write_text(new_version)
+        self.version_file.write_text(new_version, encoding='utf-8')
         print(f"✅ VERSION mis à jour: {new_version}")
-        
+
         # package.json (interface web)
         if self.package_json.exists():
-            with open(self.package_json, 'r') as f:
+            with open(self.package_json, 'r', encoding='utf-8') as f:
                 package_data = json.load(f)
-            
+
             package_data['version'] = new_version
-            
-            with open(self.package_json, 'w') as f:
+
+            with open(self.package_json, 'w', encoding='utf-8') as f:
                 json.dump(package_data, f, indent=2)
-            
+
             print(f"✅ package.json mis à jour: {new_version}")
-        
+
         # setup.py (agent)
         setup_file = self.project_root / "setup.py"
         if setup_file.exists():
-            content = setup_file.read_text()
+            content = setup_file.read_text(encoding='utf-8')
             content = re.sub(
                 r'version="[^"]*"',
                 f'version="{new_version}"',
                 content
             )
-            setup_file.write_text(content)
+            setup_file.write_text(content, encoding='utf-8')
             print(f"✅ setup.py mis à jour: {new_version}")
     
     def add_changelog_entry(self, version: str, changes: list, bump_type: str):
@@ -116,7 +116,7 @@ class VersionManager:
         if not self.changelog_file.exists():
             return
         
-        content = self.changelog_file.read_text()
+        content = self.changelog_file.read_text(encoding='utf-8')
         date = datetime.now().strftime("%Y-%m-%d")
         
         # Déterminer le type de version
@@ -150,7 +150,7 @@ class VersionManager:
             f"## [Non publié]{entry}"
         )
         
-        self.changelog_file.write_text(content)
+        self.changelog_file.write_text(content, encoding='utf-8')
         print(f"✅ CHANGELOG.md mis à jour avec la version {version}")
     
     def create_release_notes(self, version: str, changes: list) -> str:
@@ -209,7 +209,7 @@ Pour plus de détails, consultez le [CHANGELOG.md](CHANGELOG.md).
         # Créer les notes de version
         release_notes = self.create_release_notes(new_version, changes or [])
         release_file = self.project_root / f"RELEASE_NOTES_v{new_version}.md"
-        release_file.write_text(release_notes)
+        release_file.write_text(release_notes, encoding='utf-8')
         print(f"✅ Notes de version créées: {release_file}")
         
         print(f"\n🎉 Version {new_version} prête!")

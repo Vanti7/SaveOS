@@ -3,7 +3,7 @@ Schémas Pydantic pour l'API SaveOS
 """
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from enum import Enum
 
 class JobType(str, Enum):
@@ -14,6 +14,7 @@ class JobType(str, Enum):
 class JobStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
+    READY_FOR_AGENT = "ready_for_agent"  # restore target=agent : paquet prêt, en attente de récupération
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -64,15 +65,53 @@ class JobResponse(BaseModel):
 class SnapshotResponse(BaseModel):
     id: int
     job_id: int
+    agent_id: int
     name: str
     repo_path: str
     size_bytes: int
     is_full: bool
     checksum: Optional[str]
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
+
+# Schémas pour la restauration granulaire
+class RestoreTarget(str, Enum):
+    DOWNLOAD = "download"
+    AGENT = "agent"
+
+class RestoreJobCreate(BaseModel):
+    agent_id: int
+    snapshot_id: int
+    selected_paths: List[str]
+    target: RestoreTarget
+    restore_path: Optional[str] = None  # requis si target == AGENT
+    passphrase: Optional[str] = None
+
+class ArchiveEntry(BaseModel):
+    path: str
+    type: Optional[str] = None
+    size: Optional[int] = None
+    mtime: Optional[str] = None
+
+class ArchiveBrowseRequest(BaseModel):
+    path: str = ""
+    passphrase: Optional[str] = None
+
+class ArchiveBrowseResponse(BaseModel):
+    path: str
+    entries: List[ArchiveEntry]
+
+class PendingRestoreJob(BaseModel):
+    id: int
+    snapshot_id: Optional[int]
+    config: Dict[str, Any]
+    created_at: datetime
+
+class AgentReportRequest(BaseModel):
+    status: JobStatus
+    error_message: Optional[str] = None
 
 # Schémas pour l'authentification
 class Token(BaseModel):
