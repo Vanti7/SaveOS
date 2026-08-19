@@ -355,7 +355,6 @@ def enqueue_backup_job(job_id: int) -> str:
     job = queue.enqueue(
         process_backup_job,
         job_id,
-        timeout='1h',  # Timeout de 1 heure
         job_timeout='1h'
     )
     return job.id
@@ -464,7 +463,6 @@ def enqueue_restore_job(job_id: int) -> str:
     job = queue.enqueue(
         process_restore_job,
         job_id,
-        timeout='1h',
         job_timeout='1h'
     )
     return job.id

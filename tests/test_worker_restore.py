@@ -6,7 +6,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from api.database import Job, Snapshot
-from worker.tasks import BorgManager, process_restore_job, enqueue_restore_job
+from worker.tasks import BorgManager, process_restore_job, enqueue_restore_job, enqueue_backup_job
 
 
 def _reload(db_session, job_id):
@@ -190,7 +190,13 @@ def test_process_restore_job_missing_snapshot_marks_job_failed(db_session, test_
     assert job.status == 'failed'
 
 
-# --- enqueue_restore_job ---
+# --- enqueue_restore_job / enqueue_backup_job ---
+#
+# Régression : queue.enqueue() ne reconnaît que job_timeout= (pas timeout=)
+# comme kwarg RQ ; un timeout= en trop est transmis tel quel à la fonction
+# cible et fait planter le job avec TypeError dès son exécution (constaté
+# en conditions réelles : un backup ou une restauration réels échouaient
+# systématiquement avant même d'entrer dans process_backup_job/process_restore_job).
 
 @patch('worker.tasks.queue')
 def test_enqueue_restore_job_pushes_to_queue(mock_queue):
@@ -202,3 +208,17 @@ def test_enqueue_restore_job_pushes_to_queue(mock_queue):
     mock_queue.enqueue.assert_called_once()
     args, kwargs = mock_queue.enqueue.call_args
     assert args[1] == 7
+    assert kwargs == {'job_timeout': '1h'}
+
+
+@patch('worker.tasks.queue')
+def test_enqueue_backup_job_pushes_to_queue(mock_queue):
+    mock_queue.enqueue.return_value = MagicMock(id='rq-job-1')
+
+    rq_id = enqueue_backup_job(3)
+
+    assert rq_id == 'rq-job-1'
+    mock_queue.enqueue.assert_called_once()
+    args, kwargs = mock_queue.enqueue.call_args
+    assert args[1] == 3
+    assert kwargs == {'job_timeout': '1h'}
