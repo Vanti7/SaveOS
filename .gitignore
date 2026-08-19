@@ -7,15 +7,17 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+# (Ancrés à la racine : ces noms génériques existent aussi comme vrais
+# dossiers applicatifs sous web/app/, ex. web/app/lib/, web/app/downloads/.)
 .Python
-build/
+/build/
 develop-eggs/
-dist/
-downloads/
+/dist/
+/downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -142,5 +144,10 @@ test_data/
 
 # OS
 .DS_Store
-Thumbs.dbweb/.next/
+Thumbs.db
+
+# Node / web
+node_modules/
+web/.next/
 web/next-env.d.ts
+*.tsbuildinfo
