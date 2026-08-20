@@ -63,7 +63,10 @@ jobs:
       working-directory: web
       run: |
         echo "📦 Installation des dépendances..."
-        npm install --no-optional
+        # --no-optional saute le binding natif optionnel de rolldown
+        # (dépendance de Vitest, spécifique à la plateforme) : sans lui,
+        # Vitest ne démarre pas ("Cannot find native binding").
+        npm install
         echo "✅ Dépendances installées"
 
     # Bloquants (contrairement au job python-tests, aucun de ces
