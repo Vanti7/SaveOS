@@ -11,9 +11,11 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
 import json
+from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
 
 from api.database import get_db, create_tables, Agent, Job, Snapshot, Tenant
 from api.schemas import (
@@ -27,6 +29,14 @@ from worker.tasks import enqueue_backup_job
 # Configuration
 API_VERSION = "v1"
 API_PREFIX = f"/api/{API_VERSION}"
+
+# Métriques Prometheus : jauges recalculées depuis la DB à chaque scrape
+# (l'API est sans état partagé entre process/replicas, donc pas de compteurs
+# en mémoire côté API — voir worker/tasks.py pour les compteurs événementiels).
+AGENTS_GAUGE = Gauge('saveos_agents_total', "Nombre d'agents par statut", ['status'])
+JOBS_GAUGE = Gauge('saveos_jobs_total', 'Nombre de jobs par type et statut', ['type', 'status'])
+SNAPSHOTS_GAUGE = Gauge('saveos_snapshots_total', 'Nombre total de snapshots')
+SNAPSHOTS_SIZE_GAUGE = Gauge('saveos_snapshots_size_bytes_total', 'Taille totale des snapshots en octets')
 
 # Initialisation FastAPI
 app = FastAPI(
@@ -58,10 +68,23 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow()}
 
 @app.get("/metrics")
-async def metrics():
-    """Métriques Prometheus basiques"""
-    # TODO: Implémenter les métriques Prometheus
-    return {"agents_total": 0, "jobs_total": 0}
+async def metrics(db: Session = Depends(get_db)):
+    """Métriques Prometheus (format d'exposition texte)"""
+
+    # .clear() avant repeuplement : évite de garder indéfiniment une
+    # combinaison de labels qui n'a plus aucune ligne correspondante en DB.
+    AGENTS_GAUGE.clear()
+    for status_value, count in db.query(Agent.status, func.count(Agent.id)).group_by(Agent.status).all():
+        AGENTS_GAUGE.labels(status=status_value).set(count)
+
+    JOBS_GAUGE.clear()
+    for type_value, status_value, count in db.query(Job.type, Job.status, func.count(Job.id)).group_by(Job.type, Job.status).all():
+        JOBS_GAUGE.labels(type=type_value, status=status_value).set(count)
+
+    SNAPSHOTS_GAUGE.set(db.query(func.count(Snapshot.id)).scalar() or 0)
+    SNAPSHOTS_SIZE_GAUGE.set(db.query(func.coalesce(func.sum(Snapshot.size_bytes), 0)).scalar() or 0)
+
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 # === ENDPOINTS AGENTS ===
 

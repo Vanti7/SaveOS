@@ -1,0 +1,76 @@
+{
+  "title": "SaveOS - Vue d'ensemble",
+  "uid": "saveos-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Agents par statut",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "saveos_agents_total", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Snapshots (total / taille)",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "saveos_snapshots_total", "legendFormat": "snapshots", "refId": "A" },
+        { "expr": "saveos_snapshots_size_bytes_total", "legendFormat": "octets", "refId": "B" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "bargauge",
+      "title": "Jobs par type et statut",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "saveos_jobs_total", "legendFormat": "{{type}} / {{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Jobs traités par le worker (taux, 5m)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (job_type, outcome) (rate(saveos_worker_jobs_total[5m]))",
+          "legendFormat": "{{job_type}} / {{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Durée des jobs (p50 / p95)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, job_type) (rate(saveos_worker_job_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50 {{job_type}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, job_type) (rate(saveos_worker_job_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 {{job_type}}",
+          "refId": "B"
+        }
+      ]
+    }
+  ]
+}

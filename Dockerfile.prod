@@ -58,7 +58,7 @@ COPY worker/ ./worker/
 RUN mkdir -p /tmp/borg_repos && chown -R saveos:saveos /tmp/borg_repos /app
 USER saveos
 
-CMD ["python", "-m", "worker.tasks"]
+CMD ["python", "-m", "worker.run"]
 
 # Stage 4: Web Production (Node.js multi-stage)
 FROM node:18-alpine as web-builder

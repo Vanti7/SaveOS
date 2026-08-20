@@ -6,12 +6,16 @@ import json
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
+from wsgiref.simple_server import make_server
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 import redis
 from rq import Queue, Worker, Connection
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
+from prometheus_client import Counter, Histogram, CollectorRegistry, multiprocess, make_wsgi_app
 
 from api.database import Job, Snapshot, Agent
 
@@ -21,6 +25,21 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://saveos:saveos123@localhos
 
 DEFAULT_BORG_PASSPHRASE = "default_passphrase_change_me"
 RESTORE_PACKAGE_DIR = os.getenv("RESTORE_PACKAGE_DIR", "/tmp/restore_packages")
+WORKER_METRICS_PORT = int(os.getenv("WORKER_METRICS_PORT", "9200"))
+
+# Métriques Prometheus événementielles (le worker est un process long-lived,
+# contrairement à l'API — voir api/main.py pour les jauges dérivées de la DB).
+WORKER_JOBS_TOTAL = Counter(
+    'saveos_worker_jobs_total', 'Jobs traités par le worker', ['job_type', 'outcome']
+)
+WORKER_JOB_DURATION = Histogram(
+    'saveos_worker_job_duration_seconds', 'Durée de traitement des jobs', ['job_type']
+)
+
+
+def _record_job_metrics(job_type: str, outcome: str, duration_seconds: float) -> None:
+    WORKER_JOBS_TOTAL.labels(job_type=job_type, outcome=outcome).inc()
+    WORKER_JOB_DURATION.labels(job_type=job_type).observe(duration_seconds)
 
 redis_conn = redis.from_url(REDIS_URL)
 queue = Queue('saveos_jobs', connection=redis_conn)
@@ -241,25 +260,27 @@ def process_backup_job(job_id: int) -> Dict[str, Any]:
     
     db = SessionLocal()
     result = {'success': False, 'message': ''}
-    
+    start_time = None
+
     try:
         # Récupérer le job
         job = db.query(Job).filter(Job.id == job_id).first()
         if not job:
             result['message'] = f"Job {job_id} non trouvé"
             return result
-        
+
         # Récupérer l'agent
         agent = db.query(Agent).filter(Agent.id == job.agent_id).first()
         if not agent:
             result['message'] = f"Agent {job.agent_id} non trouvé"
             return result
-        
+
         # Marquer le job comme en cours
         job.status = "running"
         job.started_at = datetime.utcnow()
         db.commit()
-        
+        start_time = time.monotonic()
+
         # Parser la configuration du job
         config = {}
         if job.config:
@@ -287,6 +308,7 @@ def process_backup_job(job_id: int) -> Dict[str, Any]:
                 job.error_message = f"Erreur lors de l'initialisation du repo: {init_result.get('stderr', init_result.get('error'))}"
                 job.finished_at = datetime.utcnow()
                 db.commit()
+                _record_job_metrics('backup', 'failure', time.monotonic() - start_time)
                 result['message'] = job.error_message
                 return result
         
@@ -325,16 +347,18 @@ def process_backup_job(job_id: int) -> Dict[str, Any]:
             result['message'] = f"Sauvegarde réussie: {archive_name}"
             result['snapshot_id'] = snapshot.id
             result['size_bytes'] = size_bytes
-            
+            _record_job_metrics('backup', 'success', time.monotonic() - start_time)
+
         else:
             # Échec de la sauvegarde
             job.status = "failed"
             job.error_message = backup_result.get('stderr', backup_result.get('error', 'Erreur inconnue'))
             job.finished_at = datetime.utcnow()
             db.commit()
-            
+            _record_job_metrics('backup', 'failure', time.monotonic() - start_time)
+
             result['message'] = f"Échec de la sauvegarde: {job.error_message}"
-        
+
     except Exception as e:
         # Erreur générale
         if 'job' in locals():
@@ -342,12 +366,14 @@ def process_backup_job(job_id: int) -> Dict[str, Any]:
             job.error_message = str(e)
             job.finished_at = datetime.utcnow()
             db.commit()
-        
+        if start_time is not None:
+            _record_job_metrics('backup', 'failure', time.monotonic() - start_time)
+
         result['message'] = f"Erreur lors du traitement du job: {str(e)}"
-    
+
     finally:
         db.close()
-    
+
     return result
 
 def enqueue_backup_job(job_id: int) -> str:
@@ -367,6 +393,7 @@ def process_restore_job(job_id: int) -> Dict[str, Any]:
     db = SessionLocal()
     result = {'success': False, 'message': ''}
     extract_dir = None
+    start_time = None
 
     try:
         # Récupérer le job
@@ -379,6 +406,7 @@ def process_restore_job(job_id: int) -> Dict[str, Any]:
         job.status = "running"
         job.started_at = datetime.utcnow()
         db.commit()
+        start_time = time.monotonic()
 
         # Parser la configuration du job
         config = {}
@@ -400,6 +428,7 @@ def process_restore_job(job_id: int) -> Dict[str, Any]:
             job.error_message = f"Snapshot {snapshot_id} non trouvé"
             job.finished_at = datetime.utcnow()
             db.commit()
+            _record_job_metrics('restore', 'failure', time.monotonic() - start_time)
             result['message'] = job.error_message
             return result
 
@@ -417,6 +446,7 @@ def process_restore_job(job_id: int) -> Dict[str, Any]:
             job.error_message = extract_result.get('stderr', extract_result.get('error', 'Erreur inconnue'))
             job.finished_at = datetime.utcnow()
             db.commit()
+            _record_job_metrics('restore', 'failure', time.monotonic() - start_time)
             result['message'] = f"Échec de l'extraction: {job.error_message}"
             return result
 
@@ -440,6 +470,7 @@ def process_restore_job(job_id: int) -> Dict[str, Any]:
         result['success'] = True
         result['message'] = f"Extraction réussie: {package_path}"
         result['package_path'] = package_path
+        _record_job_metrics('restore', 'success', time.monotonic() - start_time)
 
     except Exception as e:
         # Erreur générale
@@ -448,6 +479,8 @@ def process_restore_job(job_id: int) -> Dict[str, Any]:
             job.error_message = str(e)
             job.finished_at = datetime.utcnow()
             db.commit()
+        if start_time is not None:
+            _record_job_metrics('restore', 'failure', time.monotonic() - start_time)
 
         result['message'] = f"Erreur lors du traitement du job de restauration: {str(e)}"
 
@@ -467,12 +500,24 @@ def enqueue_restore_job(job_id: int) -> str:
     )
     return job.id
 
+def _start_metrics_server(port: int) -> None:
+    """Sert /metrics en agrégeant les fichiers multiprocess (voir worker/run.py :
+    chaque job RQ s'exécute dans un processus enfant forké — os.fork() dans
+    Worker.fork_work_horse —, dont les métriques n'existent que dans
+    PROMETHEUS_MULTIPROC_DIR ; un CollectorRegistry standard ne verrait que
+    celles du process parent, jamais celles des enfants déjà terminés)."""
+    registry = CollectorRegistry()
+    multiprocess.MultiProcessCollector(registry)
+    app = make_wsgi_app(registry)
+    httpd = make_server('', port, app)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+
 def start_worker():
     """Démarre le worker RQ"""
+    _start_metrics_server(WORKER_METRICS_PORT)
+    print(f"Métriques Prometheus exposées sur :{WORKER_METRICS_PORT}/metrics")
     with Connection(redis_conn):
         worker = Worker([queue])
         print("Worker SaveOS démarré - En attente de jobs...")
         worker.work()
-
-if __name__ == '__main__':
-    start_worker()

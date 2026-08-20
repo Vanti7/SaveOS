@@ -1,0 +1,17 @@
+# Configuration Prometheus pour l'environnement de développement local.
+# En production, un Prometheus/Grafana externe scrape directement les
+# endpoints /metrics de l'API et du worker (voir README.md, section Monitoring).
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: saveos-api
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true  # certificat self-signed en développement
+    static_configs:
+      - targets: ['api:8000']
+
+  - job_name: saveos-worker
+    static_configs:
+      - targets: ['worker:9200']

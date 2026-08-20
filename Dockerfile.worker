@@ -26,4 +26,4 @@ ENV DATABASE_URL=postgresql://saveos:saveos123@postgres:5432/saveos
 ENV REDIS_URL=redis://redis:6379/0
 
 # Commande par défaut
-CMD ["python", "-m", "worker.tasks"]
+CMD ["python", "-m", "worker.run"]
