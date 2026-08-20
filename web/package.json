@@ -1,6 +1,6 @@
 {
   "name": "saveos-web",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Interface web pour SaveOS - Syst\u00c3\u00a8me de sauvegarde centralis\u00c3\u00a9",
   "license": "AGPL-3.0",
   "private": true,

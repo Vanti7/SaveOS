@@ -6,6 +6,17 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.3.0] - 2026-08-20
+
+### ✨ Nouvelles fonctionnalités
+
+- Instrumentation Prometheus réelle sur /metrics de l'API (jauges agents/jobs/snapshots dérivées de la DB)
+- Endpoint /metrics dédié du worker avec compteurs événementiels réels (jobs traités, durée, succès/échec), mode multiprocess prometheus_client
+- Stack Prometheus + Grafana local (docker-compose.yml) avec dashboard auto-provisionné, pour visualiser les métriques sans accès au monitoring externe de production
+- Retrait du stack Prometheus/Grafana auto-hébergé mort de docker-compose.prod.yml (la prod réelle utilise un Grafana + Zabbix externes)
+
+---
+
 ## [1.2.0] - 2026-08-19
 
 ### ✨ Nouvelles fonctionnalités
