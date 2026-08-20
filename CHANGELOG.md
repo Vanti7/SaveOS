@@ -6,6 +6,17 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.4.0] - 2026-08-20
+
+### ✨ Nouvelles fonctionnalités
+
+- pytest et les tests web (Vitest) deviennent des gates bloquants en CI sur push/PR (auparavant aucun échec de test n'empêchait rien)
+- Couverture ajoutée sur agent/config.py, agent/service.py et la génération de packages agent, jusqu'ici à 0%
+- Installation de Vitest + React Testing Library, tests sur RestoreModal et la page snapshots
+- Seuil de couverture pytest (--cov-fail-under=60) et correction des 3 tests cassés de test_basic.py
+
+---
+
 ## [1.3.0] - 2026-08-20
 
 ### ✨ Nouvelles fonctionnalités
