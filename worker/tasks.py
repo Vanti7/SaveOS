@@ -6,14 +6,16 @@ import json
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
+from wsgiref.simple_server import make_server
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 import redis
 from rq import Queue, Worker, Connection
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
-from prometheus_client import Counter, Histogram, start_http_server
+from prometheus_client import Counter, Histogram, CollectorRegistry, multiprocess, make_wsgi_app
 
 from api.database import Job, Snapshot, Agent
 
@@ -498,14 +500,24 @@ def enqueue_restore_job(job_id: int) -> str:
     )
     return job.id
 
+def _start_metrics_server(port: int) -> None:
+    """Sert /metrics en agrégeant les fichiers multiprocess (voir worker/run.py :
+    chaque job RQ s'exécute dans un processus enfant forké — os.fork() dans
+    Worker.fork_work_horse —, dont les métriques n'existent que dans
+    PROMETHEUS_MULTIPROC_DIR ; un CollectorRegistry standard ne verrait que
+    celles du process parent, jamais celles des enfants déjà terminés)."""
+    registry = CollectorRegistry()
+    multiprocess.MultiProcessCollector(registry)
+    app = make_wsgi_app(registry)
+    httpd = make_server('', port, app)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+
 def start_worker():
     """Démarre le worker RQ"""
-    start_http_server(WORKER_METRICS_PORT)
+    _start_metrics_server(WORKER_METRICS_PORT)
     print(f"Métriques Prometheus exposées sur :{WORKER_METRICS_PORT}/metrics")
     with Connection(redis_conn):
         worker = Worker([queue])
         print("Worker SaveOS démarré - En attente de jobs...")
         worker.work()
-
-if __name__ == '__main__':
-    start_worker()

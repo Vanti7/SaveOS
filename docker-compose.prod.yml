@@ -59,9 +59,23 @@ services:
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       RESTORE_PACKAGE_DIR: ${RESTORE_PACKAGE_DIR:-/tmp/restore_packages}
+      WORKER_METRICS_PORT: 9200
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     volumes:
       - borg_repos:/tmp/borg_repos
       - restore_packages:/tmp/restore_packages
+    # Port des métriques exposé sur le réseau interne uniquement (plusieurs
+    # replicas possibles) : le Prometheus/Grafana externe de prod scrape via
+    # la découverte de service ou une adresse interne par replica, pas un
+    # mapping de port hôte fixe.
+    expose:
+      - "9200"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9200/metrics')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     deploy:
       replicas: ${WORKER_REPLICAS:-3}
       resources:
@@ -213,38 +227,11 @@ services:
       - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN}`)"
       - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
 
-  # Monitoring (Prometheus + Grafana)
-  prometheus:
-    image: prom/prometheus:latest
-    volumes:
-      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=30d'
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 1G
-
-  grafana:
-    image: grafana/grafana:latest
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
-      GF_INSTALL_PLUGINS: grafana-piechart-panel
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./deploy/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./deploy/grafana/datasources:/etc/grafana/provisioning/datasources:ro
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
+  # Monitoring : pas de Prometheus/Grafana auto-hébergé en production — un
+  # Grafana + Zabbix externes scrapent directement api:8000/metrics et
+  # worker:9200/metrics (voir README.md, section Monitoring, et
+  # deploy/environments.yml: production.monitoring). Le stack local
+  # Prometheus/Grafana (dev uniquement) vit dans docker-compose.yml.
 
 volumes:
   postgres_data:
@@ -258,10 +245,6 @@ volumes:
   restore_packages:
     driver: local
   letsencrypt_data:
-    driver: local
-  prometheus_data:
-    driver: local
-  grafana_data:
     driver: local
 
 networks:
