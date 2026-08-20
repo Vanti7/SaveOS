@@ -196,12 +196,17 @@ SaveOS/
 ### Tests
 
 ```bash
-# Test complet de l'agent
-./scripts/test_agent.sh
+# Suite Python (API, worker, agent) — fixtures SQLite, aucun service externe requis
+pytest tests/ -m "not integration" --cov=api --cov=worker --cov=agent --cov-report=term-missing
 
-# Tests unitaires (à implémenter)
-pytest tests/
+# Suite web (Vitest)
+cd web && npm run test
+
+# Test manuel complet de l'agent contre une stack locale réelle
+./scripts/test_agent.sh
 ```
+
+`pytest`/`npm run test` sont bloquants en CI (`.github/workflows/simple-ci.yml`, voir `docs/CI-CD.md`) — un test qui échoue fait échouer le job sur toute PR ou push.
 
 ### Base de données
 
@@ -262,7 +267,7 @@ Pour le support et les questions :
 - [x] Provisioning automatique des agents ✅
 - [x] Restauration granulaire via l'interface ✅
 - [x] Monitoring avancé (Grafana) ✅
-- [ ] Tests automatisés
+- [x] Tests automatisés ✅
 - [ ] Packaging des agents (exe/dmg/deb)
 - [ ] Certificats TLS valides
 - [ ] Multi-tenancy avancée

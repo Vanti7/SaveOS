@@ -30,13 +30,13 @@ def test_database_models():
     assert hasattr(Tenant, 'id')
     assert hasattr(Tenant, 'name')
     assert hasattr(User, 'id')
-    assert hasattr(User, 'username')
+    assert hasattr(User, 'email')
     assert hasattr(Agent, 'id')
     assert hasattr(Agent, 'hostname')
     assert hasattr(Job, 'id')
     assert hasattr(Job, 'type')
     assert hasattr(Snapshot, 'id')
-    assert hasattr(Snapshot, 'path')
+    assert hasattr(Snapshot, 'name')
 
 def test_schemas():
     """Test basique des schémas Pydantic"""
@@ -65,31 +65,33 @@ def test_auth_functions():
     assert isinstance(hashed, str)
     assert hashed != token
 
-def test_agent_config():
+def test_agent_config(tmp_path):
     """Test basique de la configuration d'agent"""
     from agent.config import AgentConfig
-    
-    # Test configuration par défaut
-    config = AgentConfig()
-    assert hasattr(config, 'api_url')
-    assert hasattr(config, 'token')
-    assert hasattr(config, 'hostname')
 
-@patch('requests.post')
+    # Test configuration par défaut (répertoire temporaire pour ne pas
+    # toucher la vraie config de la machine qui exécute les tests)
+    config_manager = AgentConfig(config_dir=str(tmp_path))
+    config = config_manager.load_config()
+    assert 'api_url' in config
+    assert 'hostname' in config
+    assert config_manager.get_token() is None
+
+@patch('requests.Session.post')
 def test_agent_api_client(mock_post):
     """Test basique du client API d'agent"""
-    from agent.api_client import SaveOSClient
-    
+    from agent.api_client import SaveOSAPIClient
+
     # Mock de la réponse
     mock_response = Mock()
     mock_response.status_code = 200
     mock_response.json.return_value = {"status": "success"}
     mock_post.return_value = mock_response
-    
+
     # Test du client
-    client = SaveOSClient("https://test.api", "test-token")
-    result = client.register("test-host", "linux")
-    
+    client = SaveOSAPIClient("https://test.api", "test-token")
+    result = client.register_agent("test-host", "linux")
+
     assert result is not None
     mock_post.assert_called_once()
 

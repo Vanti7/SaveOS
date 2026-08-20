@@ -6,18 +6,18 @@ Un système CI/CD professionnel complet a été mis en place avec GitHub Actions
 
 ## 📋 **Pipelines Créés**
 
-### 1. **Pipeline Development** (`.github/workflows/ci.yml`)
+### 1. **Pipeline Development** (`.github/workflows/simple-ci.yml`)
 
 **Déclencheurs :**
 - Push sur `develop` ou `feature/*`
-- Pull Requests vers `develop` ou `main`
+- Pull Requests vers `develop`, `main` ou `master`
 
 **Jobs :**
-- ✅ **Tests Python rapides** (API, Worker, Agent)
-- ✅ **Tests Interface Web** (Next.js, TypeScript, Lint)
-- ✅ **Analyse de sécurité** (Bandit)
-- ✅ **Build léger** (artefacts de développement)
-- ✅ **Notifications** dev team
+- ✅ **Tests Python bloquants** (`pytest`, fixtures SQLite, `--cov-fail-under=60`) — un test qui échoue fait échouer le job
+- ✅ **Tests Interface Web bloquants** (lint, `tsc --noEmit`, Vitest, build)
+- ⚠️ **Lint Python** (flake8/black) — informatif seulement, ne bloque pas le job
+- ⚠️ **Validation Docker** (`docker compose config`) — informative seulement
+- Pas d'analyse de sécurité (Bandit) sur ce pipeline — elle vit dans `production.yml` uniquement
 
 ### 2. **Pipeline Production** (`.github/workflows/production.yml`)
 
@@ -153,28 +153,31 @@ git push origin main
 
 ## 🧪 **Tests Automatisés**
 
-### Tests CI
-- **Linting** (flake8, black, isort)
-- **Tests unitaires** Python
-- **Tests TypeScript** (Next.js)
-- **Validation Docker** (build + startup)
-- **Tests de sécurité** (Bandit)
+### Tests CI (bloquants, `simple-ci.yml`)
+- **pytest** sur fixtures SQLite (`tests/conftest.py`, jamais de DB réelle) — exclut les tests marqués `integration` ; couverture mesurée avec `--cov-fail-under=60`
+- **Vitest** (`web/`) — composants React critiques (ex. `RestoreModal`, `snapshots/page`)
+- **Lint web** (`next lint`), **vérification des types** (`tsc --noEmit`), **build** (`next build`)
+
+### Non bloquants (informatifs uniquement)
+- **Lint Python** (flake8, black) dans `simple-ci.yml`
+- **Validation Docker** (`docker compose config`) dans `simple-ci.yml`
+- **Tests de sécurité** (Bandit, Safety, Trivy) — uniquement dans `production.yml`, jamais sur les PR
 
 ### Tests de Déploiement
-- **Smoke tests** après déploiement
-- **Health checks** des services
-- **Tests de performance** basiques
-- **Validation des métriques**
+- **Smoke tests** après déploiement (`scripts/smoke_tests.py`) — outil manuel, pas encore appelé automatiquement par un workflow
+- `python test_local.py` tourne dans `production.yml` (bloquant) et `release.yml` (actuellement avalé par `|| echo`, à corriger séparément — teste contre une API live, plus sensible à durcir sans réflexion dédiée)
 
 ### Commandes de Test
 ```bash
-# Tests locaux
+# Suite Python complète (locale, sans services externes)
+pytest tests/ -m "not integration" --cov=api --cov=worker --cov=agent --cov-report=term-missing
+
+# Suite web
+cd web && npm run test
+
+# Smoke tests post-déploiement (manuel)
 python scripts/smoke_tests.py --env local
-
-# Tests staging
 python scripts/smoke_tests.py --env staging
-
-# Tests production
 python scripts/smoke_tests.py --env production
 ```
 
