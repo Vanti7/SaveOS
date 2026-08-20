@@ -155,7 +155,17 @@ docker-compose logs -f worker
 
 ### Métriques
 
-Les métriques Prometheus sont disponibles sur `/metrics` de l'API.
+Deux endpoints exposent de vraies métriques au format d'exposition Prometheus :
+
+- `https://localhost:8000/metrics` (API) : `saveos_agents_total{status}`, `saveos_jobs_total{type,status}`, `saveos_snapshots_total`, `saveos_snapshots_size_bytes_total` — jauges recalculées depuis la base à chaque scrape.
+- `http://localhost:9200/metrics` (worker) : `saveos_worker_jobs_total{job_type,outcome}`, `saveos_worker_job_duration_seconds{job_type}` — compteurs événementiels réels (le worker exécute chaque job dans un processus enfant forké par RQ ; les métriques sont agrégées via le mode multiprocess de `prometheus_client`, voir `worker/run.py`).
+
+**En production**, aucun Prometheus/Grafana n'est auto-hébergé par ce dépôt : un Grafana + Zabbix externes scrapent directement ces deux endpoints (adresses dans `deploy/environments.yml`, section `production.monitoring`).
+
+**En local**, `docker-compose.yml` inclut un stack Prometheus + Grafana de confort pour visualiser ces métriques sans accès à l'infra de prod :
+
+- Prometheus : http://localhost:9090 (cibles sur `/targets`)
+- Grafana : http://localhost:3001 (`admin` / `$GRAFANA_PASSWORD`, défaut `admin`) — datasource et dashboard « SaveOS - Vue d'ensemble » provisionnés automatiquement (`deploy/grafana/`)
 
 ## 🛠️ Développement
 
@@ -251,7 +261,7 @@ Pour le support et les questions :
 - [x] Téléchargement d'agents depuis l'interface ✅
 - [x] Provisioning automatique des agents ✅
 - [x] Restauration granulaire via l'interface ✅
-- [ ] Monitoring avancé (Grafana)
+- [x] Monitoring avancé (Grafana) ✅
 - [ ] Tests automatisés
 - [ ] Packaging des agents (exe/dmg/deb)
 - [ ] Certificats TLS valides

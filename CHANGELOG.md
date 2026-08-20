@@ -20,7 +20,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 
 ### Prévu
-- Monitoring avancé avec Grafana
 - Tests automatisés complets
 - Packaging des agents (exe/dmg/deb)
 - Certificats TLS valides
