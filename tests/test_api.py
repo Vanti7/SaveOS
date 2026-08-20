@@ -13,12 +13,12 @@ def test_health_check():
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
 
-def test_metrics():
-    """Test du endpoint de métriques"""
+def test_metrics(client):
+    """Test du endpoint de métriques (format d'exposition Prometheus, cf.
+    tests/test_metrics_api.py pour la couverture détaillée)"""
     response = client.get("/metrics")
     assert response.status_code == 200
-    assert "agents_total" in response.json()
-    assert "jobs_total" in response.json()
+    assert response.headers["content-type"].startswith("text/plain")
 
 @pytest.mark.integration
 def test_register_agent():
