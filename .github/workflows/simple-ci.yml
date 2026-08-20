@@ -24,9 +24,8 @@ jobs:
     - name: Install dependencies (no cache)
       run: |
         python -m pip install --upgrade pip --no-cache-dir
-        pip install --no-cache-dir fastapi uvicorn sqlalchemy psycopg2-binary
-        pip install --no-cache-dir redis rq python-jose passlib
-        pip install --no-cache-dir pytest flake8 black isort
+        pip install --no-cache-dir -r requirements.txt
+        pip install --no-cache-dir flake8 black isort
 
     - name: Code quality
       run: |
@@ -35,27 +34,14 @@ jobs:
         black --check api/ worker/ agent/ || echo "⚠️ Formatage à améliorer"
         echo "✅ Vérifications terminées"
 
-    - name: Basic tests
+    # Bloquant : contrairement au reste de ce job (lint), un test qui échoue
+    # ici fait échouer le job. Sur fixtures SQLite (tests/conftest.py) —
+    # aucun service externe requis, exclut les tests marqués "integration".
+    - name: Tests pytest (bloquant)
       run: |
-        echo "🧪 Tests basiques..."
-        python -c "
-        try:
-            from api.database import Tenant, User, Agent
-            from api.auth import AuthManager
-            from agent.config import AgentConfig
-            print('✅ Tous les imports fonctionnent')
-        except Exception as e:
-            print(f'⚠️ Erreur d\\'import: {e}')
-        "
-        
-        # Test génération token
-        python -c "
-        from api.auth import AuthManager
-        token = AuthManager.generate_agent_token()
-        print(f'✅ Token généré: {token[:10]}...')
-        "
-        
-        echo "✅ Tests basiques terminés"
+        pytest tests/ -v -m "not integration" \
+          --cov=api --cov=worker --cov=agent --cov-report=term-missing \
+          --cov-fail-under=60
 
   # Tests Web ultra-simples
   web-tests:
@@ -78,12 +64,24 @@ jobs:
         npm install --no-optional
         echo "✅ Dépendances installées"
 
-    - name: Build check
+    # Bloquants (contrairement au job python-tests, aucun de ces
+    # échecs n'était détecté avant : build/lint/types/tests web
+    # n'empêchaient jamais rien).
+    - name: Lint
       working-directory: web
-      run: |
-        echo "🏗️ Test de build..."
-        npm run build || echo "⚠️ Build échoué mais on continue"
-        echo "✅ Build testé"
+      run: npm run lint
+
+    - name: Vérification des types
+      working-directory: web
+      run: npx tsc --noEmit
+
+    - name: Tests unitaires (Vitest)
+      working-directory: web
+      run: npm run test
+
+    - name: Build
+      working-directory: web
+      run: npm run build
 
   # Validation Docker simple
   docker-check:
