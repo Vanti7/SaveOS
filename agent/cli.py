@@ -16,6 +16,7 @@ from typing import Dict, Any
 
 from agent.config import AgentConfig
 from agent.api_client import SaveOSAPIClient
+from agent.service import ServiceManager
 
 @click.group()
 @click.option('--config-dir', help='Répertoire de configuration personnalisé')
@@ -249,6 +250,58 @@ def config_show(ctx):
         click.echo(f"   Token: Configuré ({token[:8]}...)")
     else:
         click.echo("   Token: Non configuré")
+
+def _current_agent_path() -> str:
+    """Chemin de l'exécutable (figé) ou du script courant, pour ServiceManager."""
+    if getattr(sys, 'frozen', False):
+        return sys.executable
+    return os.path.abspath(__file__)
+
+@click.group()
+def service():
+    """Gère l'agent comme service système (installation, démarrage, arrêt, statut)"""
+
+@service.command('install')
+def service_install():
+    """Installe l'agent comme service système à démarrage automatique"""
+    result = ServiceManager(_current_agent_path()).install_service()
+    if result['success']:
+        click.echo(f"✅ {result.get('message', 'Service installé')}")
+    else:
+        click.echo(f"❌ {result['error']}", err=True)
+        sys.exit(1)
+
+@service.command('start')
+def service_start():
+    """Démarre le service"""
+    result = ServiceManager(_current_agent_path()).start_service()
+    if result['success']:
+        click.echo(f"✅ {result.get('message', 'Service démarré')}")
+    else:
+        click.echo(f"❌ {result['error']}", err=True)
+        sys.exit(1)
+
+@service.command('stop')
+def service_stop():
+    """Arrête le service"""
+    result = ServiceManager(_current_agent_path()).stop_service()
+    if result['success']:
+        click.echo(f"✅ {result.get('message', 'Service arrêté')}")
+    else:
+        click.echo(f"❌ {result['error']}", err=True)
+        sys.exit(1)
+
+@service.command('status')
+def service_status():
+    """Affiche le statut du service"""
+    result = ServiceManager(_current_agent_path()).get_service_status()
+    if result['success']:
+        click.echo(f"Status: {result['status']}")
+    else:
+        click.echo(f"❌ {result['error']}", err=True)
+        sys.exit(1)
+
+cli.add_command(service)
 
 @cli.command()
 @click.pass_context
