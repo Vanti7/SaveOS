@@ -23,6 +23,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copier le code de l'API
 COPY api/ ./api/
 COPY worker/ ./worker/
+# Nécessaire pour generate_agent_package() : empaquette les vrais fichiers
+# agent/ à la volée (plus de copie dupliquée en string dans api/main.py).
+COPY agent/ ./agent/
 
 # Créer le répertoire pour les certificats TLS
 RUN mkdir -p /app/certs

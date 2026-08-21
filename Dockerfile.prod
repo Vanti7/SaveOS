@@ -28,6 +28,9 @@ RUN groupadd -r saveos && useradd -r -g saveos saveos
 # Copier le code
 COPY api/ ./api/
 COPY worker/ ./worker/
+# Nécessaire pour generate_agent_package() : empaquette les vrais fichiers
+# agent/ à la volée (plus de copie dupliquée en string dans api/main.py).
+COPY agent/ ./agent/
 
 # Permissions
 RUN chown -R saveos:saveos /app
