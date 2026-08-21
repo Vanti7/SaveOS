@@ -15,7 +15,6 @@ setup(
         "click>=8.1.7",
         "requests>=2.31.0",
         "python-dotenv>=1.0.0",
-        "borgbackup>=1.2.6",
     ],
     entry_points={
         'console_scripts': [
