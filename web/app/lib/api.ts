@@ -145,10 +145,25 @@ export const api = {
     fileDownload(response.data, filename)
   },
 
-  // Téléchargement d'agent
+  // Téléchargement d'agent (package source, zip/tar.gz)
   async downloadAgent(platform: string): Promise<Blob> {
     const response = await apiClient.get(`/download/agent/${platform}`, {
       responseType: 'blob'
+    })
+    return response.data
+  },
+
+  // URL de l'installeur natif (exe/dmg/deb) : simple redirection HTTP côté
+  // API, pas de fetch nécessaire — un lien direct suffit.
+  installerDownloadUrl(platform: string): string {
+    return `${API_BASE_URL}/download/agent/${platform}/installer`
+  },
+
+  // Provisionne un agent (token pré-généré) avant de générer son package.
+  // hostname/platform sont des query params côté API (pas un body JSON).
+  async provisionAgent(hostname: string, platform: string) {
+    const response = await apiClient.post('/api/v1/agents/provision', null, {
+      params: { hostname, platform },
     })
     return response.data
   },

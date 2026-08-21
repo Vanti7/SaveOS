@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="saveos-agent",
-    version="1.4.0",
+    version="1.5.0",
     description="Agent de sauvegarde pour le système SaveOS",
     author="SaveOS Team",
     author_email="contact@saveos.local",
@@ -15,7 +15,6 @@ setup(
         "click>=8.1.7",
         "requests>=2.31.0",
         "python-dotenv>=1.0.0",
-        "borgbackup>=1.2.6",
     ],
     entry_points={
         'console_scripts': [

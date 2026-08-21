@@ -1,0 +1,4 @@
+# Dépendances de construction des installeurs agent (exe/pkg/deb) —
+# jamais installées à l'exécution, uniquement par la CI de release et pour
+# construire un exécutable localement. Voir packaging/.
+pyinstaller==6.11.1

@@ -7,9 +7,10 @@ Licensed under GNU Affero General Public License v3.0 (AGPL-3.0)
 See LICENSE file for details.
 """
 import os
+from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
@@ -373,6 +374,40 @@ async def download_agent(platform: str):
         }
     )
 
+# Doit rester aligné avec les noms de fichiers produits par le job
+# build-agent-installers de .github/workflows/release.yml.
+_INSTALLER_ASSET_TEMPLATES = {
+    'windows': 'SaveOS-Agent-Setup-{version}-windows.exe',
+    'macos': 'SaveOS-Agent-{version}-macos.dmg',
+    'linux': 'saveos-agent_{version}_amd64.deb',
+}
+_VERSION_FILE = Path(__file__).resolve().parent.parent / 'VERSION'
+
+def _get_current_version() -> str:
+    return _VERSION_FILE.read_text(encoding='utf-8').strip()
+
+@app.get("/download/agent/{platform}/installer")
+async def download_agent_installer(platform: str):
+    """Redirige vers l'installeur natif (exe/dmg/deb) de la version
+    courante, publié en asset sur la GitHub Release correspondante.
+    L'API reste stateless : aucun binaire stocké ni proxyé ici — voir
+    docs/adr/0002-packaging-agents.md."""
+
+    if platform not in _INSTALLER_ASSET_TEMPLATES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plateforme non supportée"
+        )
+
+    version = _get_current_version()
+    repo = os.getenv('GITHUB_REPO', 'Vanti7/SaveOS')
+    asset_name = _INSTALLER_ASSET_TEMPLATES[platform].format(version=version)
+
+    return RedirectResponse(
+        url=f"https://github.com/{repo}/releases/download/v{version}/{asset_name}",
+        status_code=status.HTTP_302_FOUND,
+    )
+
 @app.post("/api/v1/agents/provision")
 async def provision_agent(
     hostname: str,
@@ -414,222 +449,60 @@ async def provision_agent(
         "api_url": f"https://{os.getenv('API_HOST', 'localhost')}:{os.getenv('API_PORT', '8000')}"
     }
 
+AGENT_SOURCE_DIR = Path(__file__).resolve().parent.parent / 'agent'
+AGENT_SOURCE_FILES = ['__init__.py', 'cli.py', 'config.py', 'api_client.py', 'service.py']
+
 def generate_agent_package(platform: str) -> bytes:
-    """Génère un package d'installation pour la plateforme donnée"""
-    import tempfile
+    """Génère un package d'installation (code source) pour la plateforme
+    donnée, à partir des vrais fichiers du package agent/ — plus de copie
+    dupliquée et obsolète : ce qui est livré est ce qui tourne réellement
+    en développement (mêmes commandes, y compris service/apply-restores).
+    Pour un exécutable autonome sans dépendance Python, voir
+    /download/agent/{platform}/installer (packaging/, construit par CI)."""
     import zipfile
     import tarfile
     import io
-    
-    # Code de l'agent Python
-    agent_code = '''#!/usr/bin/env python3
-"""
-SaveOS Agent - Client de sauvegarde
-"""
-import os
-import sys
-import json
-import requests
-import subprocess
-import platform as plt
-import argparse
-from pathlib import Path
-from datetime import datetime
 
-class SaveOSAgent:
-    def __init__(self, config_path=None):
-        self.config_path = config_path or self.get_default_config_path()
-        self.config = self.load_config()
-        
-    def get_default_config_path(self):
-        if os.name == 'nt':  # Windows
-            config_dir = Path(os.environ.get("APPDATA", "")) / "SaveOS"
-        elif sys.platform == 'darwin':  # macOS
-            config_dir = Path.home() / "Library" / "Application Support" / "SaveOS"
-        else:  # Linux
-            config_dir = Path.home() / ".config" / "saveos"
-        
-        config_dir.mkdir(parents=True, exist_ok=True)
-        return config_dir / "config.json"
-    
-    def load_config(self):
-        if self.config_path.exists():
-            with open(self.config_path, 'r') as f:
-                return json.load(f)
-        return {}
-    
-    def save_config(self, config):
-        with open(self.config_path, 'w') as f:
-            json.dump(config, f, indent=2)
-    
-    def register(self, api_url=None, token=None):
-        """Enregistre l'agent auprès du serveur"""
-        if api_url:
-            self.config['api_url'] = api_url
-        if token:
-            self.config['token'] = token
-            
-        self.config.update({
-            'hostname': plt.node(),
-            'platform': plt.system().lower(),
-            'last_registration': datetime.now().isoformat()
-        })
-        
-        self.save_config(self.config)
-        print(f"✅ Agent enregistré auprès de {self.config.get('api_url')}")
-        
-        # Envoyer un heartbeat initial
-        self.heartbeat()
-    
-    def heartbeat(self):
-        """Envoie un heartbeat au serveur"""
-        if not self.config.get('token'):
-            print("❌ Token manquant. Enregistrez l'agent d'abord.")
-            return
-            
-        try:
-            response = requests.post(
-                f"{self.config['api_url']}/api/v1/agents/heartbeat",
-                json={"status": "active", "config": {}},
-                headers={"Authorization": f"Bearer {self.config['token']}"},
-                verify=False,
-                timeout=30
-            )
-            if response.status_code == 200:
-                print("💓 Heartbeat envoyé avec succès")
-            else:
-                print(f"❌ Erreur heartbeat: {response.status_code}")
-        except Exception as e:
-            print(f"❌ Erreur de connexion: {e}")
-    
-    def backup(self, paths=None):
-        """Lance une sauvegarde"""
-        if not self.config.get('token'):
-            print("❌ Token manquant. Enregistrez l'agent d'abord.")
-            return
-            
-        print("🚀 Lancement de la sauvegarde...")
-        
-        # Créer un job de sauvegarde
-        try:
-            response = requests.post(
-                f"{self.config['api_url']}/api/v1/backup",
-                json={
-                    "agent_id": 1,  # Sera récupéré dynamiquement
-                    "type": "backup",
-                    "config": {
-                        "source_paths": paths or [str(Path.home() / "Documents")],
-                        "repo_path": str(Path.home() / ".saveos" / "repo"),
-                        "passphrase": "default_passphrase_change_me"
-                    }
-                },
-                headers={"Authorization": f"Bearer {self.config['token']}"},
-                verify=False,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                job = response.json()
-                print(f"✅ Job de sauvegarde créé (ID: {job['id']})")
-            else:
-                print(f"❌ Erreur lors de la création du job: {response.status_code}")
-                
-        except Exception as e:
-            print(f"❌ Erreur: {e}")
-    
-    def status(self):
-        """Affiche le statut de l'agent"""
-        print("📊 Status de l'agent SaveOS:")
-        print(f"   Hostname: {self.config.get('hostname', 'Non configuré')}")
-        print(f"   Platform: {self.config.get('platform', 'Non configuré')}")
-        print(f"   API URL: {self.config.get('api_url', 'Non configuré')}")
-        print(f"   Token: {'Configuré' if self.config.get('token') else 'Non configuré'}")
-        print(f"   Config: {self.config_path}")
-    
-    def daemon(self):
-        """Démarre l'agent en mode daemon"""
-        import time
-        print("🔄 Démarrage du daemon SaveOS Agent...")
-        
-        try:
-            while True:
-                self.heartbeat()
-                time.sleep(300)  # 5 minutes
-        except KeyboardInterrupt:
-            print("\\n🛑 Arrêt du daemon")
+    # Dépendances minimales de l'agent (agent/, pas requirements.txt complet
+    # de l'appli) — doit rester aligné avec setup.py::install_requires.
+    requirements = "click>=8.1.7\nrequests>=2.31.0\npython-dotenv>=1.0.0\n"
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='SaveOS Agent')
-    parser.add_argument('command', choices=['register', 'backup', 'status', 'daemon', 'heartbeat'])
-    parser.add_argument('--api-url', help='URL de l\\'API SaveOS')
-    parser.add_argument('--token', help='Token d\\'authentification')
-    parser.add_argument('--paths', nargs='+', help='Chemins à sauvegarder')
-    
-    args = parser.parse_args()
-    
-    agent = SaveOSAgent()
-    
-    if args.command == 'register':
-        agent.register(args.api_url, args.token)
-    elif args.command == 'backup':
-        agent.backup(args.paths)
-    elif args.command == 'status':
-        agent.status()
-    elif args.command == 'daemon':
-        agent.daemon()
-    elif args.command == 'heartbeat':
-        agent.heartbeat()
-'''
-
-    requirements = '''requests>=2.31.0
-borgbackup>=1.2.6
-'''
-
-    # Scripts d'installation selon la plateforme
     if platform == 'windows':
         install_script = '''@echo off
-echo 🚀 Installation de SaveOS Agent pour Windows...
+echo Installation de SaveOS Agent pour Windows...
 
-REM Vérifier Python
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ❌ Python non trouvé. Veuillez installer Python 3.8+
+    echo Python non trouve. Veuillez installer Python 3.8+
     pause
     exit /b 1
 )
 
-REM Créer le répertoire d'installation
 set INSTALL_DIR=%PROGRAMFILES%\\SaveOS
 mkdir "%INSTALL_DIR%" 2>nul
+xcopy /E /I /Y agent "%INSTALL_DIR%\\agent" >nul
+copy requirements.txt "%INSTALL_DIR%\\" >nul
 
-REM Copier les fichiers
-copy "agent.py" "%INSTALL_DIR%\\" >nul
-copy "requirements.txt" "%INSTALL_DIR%\\" >nul
-
-REM Créer le répertoire de configuration
 mkdir "%APPDATA%\\SaveOS" 2>nul
-copy "config.json" "%APPDATA%\\SaveOS\\" >nul
+copy config.json "%APPDATA%\\SaveOS\\" >nul
 
-REM Installer les dépendances
 cd /d "%INSTALL_DIR%"
 python -m pip install -r requirements.txt
 
-REM Enregistrer l'agent
-python agent.py register
+python -m agent.cli register
 
-echo ✅ Installation terminée!
-echo L'agent SaveOS est maintenant installé.
+echo Installation terminee !
+echo L'agent SaveOS est maintenant installe.
 pause
 '''
     else:
         install_script = '''#!/bin/bash
-echo "🚀 Installation de SaveOS Agent..."
+set -e
+echo "Installation de SaveOS Agent..."
 
-# Vérifier Python
 if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 non trouvé. Installation..."
+    echo "Python 3 non trouve. Installation..."
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
         if command -v brew &> /dev/null; then
             brew install python@3.11
         else
@@ -637,19 +510,15 @@ if ! command -v python3 &> /dev/null; then
             exit 1
         fi
     else
-        # Linux
         sudo apt-get update && sudo apt-get install -y python3 python3-pip
     fi
 fi
 
-# Créer le répertoire d'installation
 INSTALL_DIR="/opt/saveos"
 sudo mkdir -p "$INSTALL_DIR"
-sudo cp agent.py "$INSTALL_DIR/"
+sudo cp -r agent "$INSTALL_DIR/"
 sudo cp requirements.txt "$INSTALL_DIR/"
-sudo chmod +x "$INSTALL_DIR/agent.py"
 
-# Configuration utilisateur
 if [[ "$OSTYPE" == "darwin"* ]]; then
     CONFIG_DIR="$HOME/Library/Application Support/SaveOS"
 else
@@ -659,18 +528,15 @@ fi
 mkdir -p "$CONFIG_DIR"
 cp config.json "$CONFIG_DIR/"
 
-# Installer les dépendances
 cd "$INSTALL_DIR"
 sudo python3 -m pip install -r requirements.txt
 
-# Enregistrer l'agent
-python3 agent.py register
+python3 -m agent.cli register
 
-echo "✅ Installation terminée!"
-echo "L'agent SaveOS est maintenant installé."
+echo "Installation terminee !"
+echo "L'agent SaveOS est maintenant installe."
 '''
 
-    # Configuration par défaut
     config = {
         "api_url": f"https://{os.getenv('API_HOST', 'localhost')}:{os.getenv('API_PORT', '8000')}",
         "hostname": f"{platform}-agent",
@@ -679,35 +545,34 @@ echo "L'agent SaveOS est maintenant installé."
         "heartbeat_interval": 300
     }
 
-    # Créer le package
     if platform == 'windows':
-        # Package ZIP pour Windows
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr('agent.py', agent_code)
+            for filename in AGENT_SOURCE_FILES:
+                zf.write(AGENT_SOURCE_DIR / filename, arcname=f'agent/{filename}')
             zf.writestr('requirements.txt', requirements)
             zf.writestr('install.bat', install_script)
             zf.writestr('config.json', json.dumps(config, indent=2))
-            zf.writestr('README.txt', f'SaveOS Agent pour {platform}\\n\\nExécutez install.bat pour installer.')
-        
+            zf.writestr('README.txt', f'SaveOS Agent pour {platform}\n\nExécutez install.bat pour installer.')
+
         return buffer.getvalue()
     else:
-        # Package TAR.GZ pour Unix
         buffer = io.BytesIO()
         with tarfile.open(fileobj=buffer, mode='w:gz') as tf:
-            
+            for filename in AGENT_SOURCE_FILES:
+                tf.add(AGENT_SOURCE_DIR / filename, arcname=f'agent/{filename}')
+
             def add_string(name, content):
                 info = tarfile.TarInfo(name=name)
                 info.size = len(content.encode())
                 info.mode = 0o755 if name.endswith('.sh') else 0o644
                 tf.addfile(info, io.BytesIO(content.encode()))
-            
-            add_string('agent.py', agent_code)
+
             add_string('requirements.txt', requirements)
             add_string('install.sh', install_script)
             add_string('config.json', json.dumps(config, indent=2))
-            add_string('README.md', f'# SaveOS Agent pour {platform}\\n\\nExécutez `bash install.sh` pour installer.')
-        
+            add_string('README.md', f'# SaveOS Agent pour {platform}\n\nExécutez `bash install.sh` pour installer.')
+
         return buffer.getvalue()
 
 if __name__ == "__main__":

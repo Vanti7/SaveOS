@@ -7,15 +7,28 @@ import sys
 import platform
 import subprocess
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class ServiceManager:
     """Gestionnaire de services système pour l'agent SaveOS"""
-    
-    def __init__(self, agent_path: str):
+
+    def __init__(self, agent_path: str, is_frozen: Optional[bool] = None):
         self.agent_path = agent_path
         self.platform = platform.system().lower()
         self.service_name = "saveos-agent"
+        # Un exécutable figé (PyInstaller) EST l'interpréteur + le script :
+        # on l'invoque directement, sans le préfixer par `python3 <path>`
+        # comme pour un script .py lancé via un Python système.
+        self.is_frozen = is_frozen if is_frozen is not None else getattr(sys, 'frozen', False)
+
+    def _exec_args(self, *args: str) -> list:
+        """Liste [programme, ...arguments] d'exécution de l'agent, adaptée figé/script."""
+        base = [self.agent_path] if self.is_frozen else ['/usr/bin/python3', self.agent_path]
+        return base + list(args)
+
+    def _exec_command(self, *args: str) -> str:
+        """Commande d'exécution de l'agent en une seule chaîne (ExecStart= systemd)."""
+        return ' '.join(self._exec_args(*args))
     
     def install_service(self) -> Dict[str, Any]:
         """Installe l'agent comme service système"""
@@ -42,7 +55,7 @@ Wants=network.target
 Type=simple
 User=root
 WorkingDirectory={Path(self.agent_path).parent}
-ExecStart=/usr/bin/python3 {self.agent_path} daemon
+ExecStart={self._exec_command('daemon')}
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
@@ -73,6 +86,9 @@ WantedBy=multi-user.target
     
     def _install_launchd_service(self) -> Dict[str, Any]:
         """Installe le service launchd sur macOS"""
+        program_arguments = '\n'.join(
+            f'        <string>{arg}</string>' for arg in self._exec_args('daemon')
+        )
         plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -81,9 +97,7 @@ WantedBy=multi-user.target
     <string>com.saveos.agent</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/python3</string>
-        <string>{self.agent_path}</string>
-        <string>daemon</string>
+{program_arguments}
     </array>
     <key>WorkingDirectory</key>
     <string>{Path(self.agent_path).parent}</string>
@@ -117,16 +131,8 @@ WantedBy=multi-user.target
             return {"success": False, "error": "Permissions insuffisantes (sudo requis)"}
     
     def _install_windows_service(self) -> Dict[str, Any]:
-        """Installe le service Windows"""
-        try:
-            import win32serviceutil
-            import win32service
-            import win32event
-            import servicemanager
-        except ImportError:
-            return {"success": False, "error": "Module pywin32 requis pour les services Windows"}
-        
-        # Pour Windows, on utilise une approche simplifiée avec une tâche planifiée
+        """Installe l'agent Windows via une tâche planifiée (schtasks) — ne
+        nécessite pas pywin32, absent sur une machine utilisateur type."""
         return self._install_windows_task()
     
     def _install_windows_task(self) -> Dict[str, Any]:
@@ -166,8 +172,8 @@ WantedBy=multi-user.target
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>python</Command>
-      <Arguments>"{self.agent_path}" daemon</Arguments>
+      <Command>{'python' if not self.is_frozen else self.agent_path}</Command>
+      <Arguments>{f'"{self.agent_path}" daemon' if not self.is_frozen else 'daemon'}</Arguments>
       <WorkingDirectory>{Path(self.agent_path).parent}</WorkingDirectory>
     </Exec>
   </Actions>
