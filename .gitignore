@@ -29,9 +29,11 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# PyInstaller
+# PyInstaller (spec auto-générées si vous n'utilisez pas les vôtres)
 *.manifest
 *.spec
+# ... sauf la spec versionnée intentionnellement pour l'agent (packaging/)
+!packaging/**/*.spec
 
 # Installer logs
 pip-log.txt
