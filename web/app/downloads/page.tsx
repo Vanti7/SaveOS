@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { DownloadIcon, CopyIcon, CheckIcon, ServerIcon } from 'lucide-react'
+import { DownloadIcon, CopyIcon, CheckIcon, ServerIcon, PackageIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 import fileDownload from 'js-file-download'
 import { api } from '../lib/api'
@@ -67,43 +67,23 @@ export default function DownloadsPage() {
   const generateAgentPackage = async (platform: string) => {
     try {
       setDownloading(platform)
-      
+
       // Demander le hostname à l'utilisateur
       const hostname = prompt('Nom de la machine (hostname):') || `${platform}-agent-${Date.now()}`
-      
-      // Provisionner l'agent sur le serveur
-      const provisionResponse = await fetch('/api/v1/agents/provision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          hostname: hostname,
-          platform: platform
-        })
-      })
 
-      if (!provisionResponse.ok) {
-        throw new Error('Erreur lors du provisioning de l\'agent')
-      }
-
-      const provisionData = await provisionResponse.json()
+      // Provisionner l'agent sur le serveur, puis télécharger le package
+      // source pré-configuré (voir web/app/lib/api.ts pour l'installeur
+      // natif exe/dmg/deb, qui ne nécessite pas ce provisioning).
+      const provisionData = await api.provisionAgent(hostname, platform)
       setConfigData(provisionData)
 
-      // Télécharger le package d'agent pré-configuré
-      const downloadResponse = await fetch(`/download/agent/${platform}`, {
-        method: 'GET'
-      })
-
-      if (!downloadResponse.ok) {
-        throw new Error('Erreur lors du téléchargement du package')
-      }
-
-      const blob = await downloadResponse.blob()
+      const blob = await api.downloadAgent(platform)
       const filename = `saveos-agent-${hostname}-${platform}.${platform === 'windows' ? 'zip' : 'tar.gz'}`
       fileDownload(blob, filename)
-      
+
       toast.success(`Package ${platform} téléchargé avec succès!`)
       toast.success(`Agent provisionné: ${hostname}`)
-      
+
     } catch (error) {
       console.error('Erreur lors du téléchargement:', error)
       toast.error('Erreur lors de la génération du package')
@@ -174,6 +154,11 @@ export default function DownloadsPage() {
               </div>
             </div>
 
+            <p className="text-xs text-gray-500 mb-2">
+              Le package source nécessite Python ; l'installeur natif est autonome
+              et enregistre le service au démarrage automatiquement.
+            </p>
+
             <button
               onClick={() => generateAgentPackage(platform.id)}
               disabled={downloading === platform.id}
@@ -187,10 +172,18 @@ export default function DownloadsPage() {
               ) : (
                 <>
                   <DownloadIcon className="w-4 h-4 mr-2" />
-                  Télécharger
+                  Package source (.{platform.id === 'windows' ? 'zip' : 'tar.gz'})
                 </>
               )}
             </button>
+
+            <a
+              href={api.installerDownloadUrl(platform.id)}
+              className="btn-secondary w-full flex items-center justify-center mt-3"
+            >
+              <PackageIcon className="w-4 h-4 mr-2" />
+              Installeur natif ({platform.id === 'windows' ? '.exe' : platform.id === 'macos' ? '.dmg' : '.deb'})
+            </a>
           </div>
         ))}
       </div>
