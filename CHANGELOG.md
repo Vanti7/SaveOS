@@ -42,7 +42,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 
 ### Prévu
-- Packaging des agents (exe/dmg/deb)
 - Certificats TLS valides
 - Multi-tenancy avancée
 - Gestion des utilisateurs et authentification

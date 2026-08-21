@@ -86,27 +86,29 @@ L'agent se configure automatiquement lors de la première utilisation. La config
 
 ### Installation d'agents
 
-1. Dans l'interface web, allez dans **"Téléchargements"**
-2. Choisissez votre plateforme (Windows/macOS/Linux)
-3. Entrez le nom de la machine (hostname)
-4. **Le système génère automatiquement un package pré-configuré** avec :
-   - Token d'authentification unique
-   - Configuration serveur
-   - Scripts d'installation
-5. Transférez et exécutez le package sur la machine cible
-6. **L'agent apparaît automatiquement dans la liste** et commence à envoyer des heartbeats
+Deux options depuis l'interface web (section **"Téléchargements"**), pour chaque plateforme (Windows/macOS/Linux) :
+
+- **Installeur natif** (`.exe`/`.dmg`/`.deb`) : aucune dépendance Python requise, enregistre automatiquement l'agent comme service à démarrage automatique (tâche planifiée Windows, launchd macOS, systemd Linux) pendant l'installation. Construit et publié en asset sur chaque [GitHub Release](https://github.com/Vanti7/SaveOS/releases) par `.github/workflows/release.yml` (voir `packaging/` et `docs/adr/0002-packaging-agents.md`).
+- **Package source** (`.zip`/`.tar.gz`) : code source de l'agent (`agent/`) pré-configuré avec token et URL serveur, nécessite Python 3.8+ sur la machine cible.
+
+Dans les deux cas, l'agent apparaît automatiquement dans la liste et commence à envoyer des heartbeats une fois enregistré (`saveos-agent register`, ou automatique pour l'installeur natif via le script d'installation).
 
 ### Commandes de l'agent (optionnel)
 
+Avec l'installeur natif, utilisez directement le binaire (`saveos-agent` dans le PATH, ou l'exécutable installé). Avec le package source, `python -m agent.cli` :
+
 ```bash
 # Vérifier le statut
-python agent.py status
+saveos-agent status
 
 # Lancer une sauvegarde manuelle
-python agent.py backup
+saveos-agent backup
 
 # Mode daemon
-python agent.py daemon
+saveos-agent daemon
+
+# Gérer le service système (installé automatiquement par l'installeur natif)
+saveos-agent service install|start|stop|status
 ```
 
 ### API REST
@@ -268,7 +270,7 @@ Pour le support et les questions :
 - [x] Restauration granulaire via l'interface ✅
 - [x] Monitoring avancé (Grafana) ✅
 - [x] Tests automatisés ✅
-- [ ] Packaging des agents (exe/dmg/deb)
+- [x] Packaging des agents (exe/dmg/deb) ✅
 - [ ] Certificats TLS valides
 - [ ] Multi-tenancy avancée
 - [ ] Gestion des utilisateurs et rôles
