@@ -131,16 +131,8 @@ WantedBy=multi-user.target
             return {"success": False, "error": "Permissions insuffisantes (sudo requis)"}
     
     def _install_windows_service(self) -> Dict[str, Any]:
-        """Installe le service Windows"""
-        try:
-            import win32serviceutil
-            import win32service
-            import win32event
-            import servicemanager
-        except ImportError:
-            return {"success": False, "error": "Module pywin32 requis pour les services Windows"}
-        
-        # Pour Windows, on utilise une approche simplifiée avec une tâche planifiée
+        """Installe l'agent Windows via une tâche planifiée (schtasks) — ne
+        nécessite pas pywin32, absent sur une machine utilisateur type."""
         return self._install_windows_task()
     
     def _install_windows_task(self) -> Dict[str, Any]:

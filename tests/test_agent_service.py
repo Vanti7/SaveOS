@@ -65,15 +65,24 @@ def test_install_service_macos_calls_launchctl(mock_run):
     )
 
 
-def test_install_service_windows_without_pywin32_reports_clear_error():
-    # install_service() importe win32serviceutil/win32service/win32event/
-    # servicemanager avant de déléguer à la tâche planifiée : sur une machine
-    # sans pywin32 (comme cet environnement de test), c'est le comportement
-    # réel constaté pour un utilisateur.
+@patch('agent.service.subprocess.run')
+def test_install_service_windows_delegates_to_scheduled_task(mock_run):
+    # install_service() importait autrefois win32serviceutil/win32service/
+    # win32event/servicemanager avant de déléguer à la tâche planifiée —
+    # code mort jamais utilisé (l'implémentation réelle est schtasks, pas
+    # pywin32) qui bloquait tout sur une machine utilisateur type (jamais
+    # pywin32 installé). Découvert en testant un exécutable PyInstaller réel
+    # (dist/saveos-agent.exe service install échouait systématiquement sur
+    # "Module pywin32 requis"). Retiré : install_service() délègue
+    # directement à _install_windows_task(), sans condition.
     manager = _manager('Windows')
+    mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+
     result = manager.install_service()
-    assert result['success'] is False
-    assert 'pywin32' in result['error']
+
+    assert result['success'] is True
+    args, _ = mock_run.call_args
+    assert args[0][:3] == ['schtasks', '/create', '/tn']
 
 
 @patch('agent.service.subprocess.run')
