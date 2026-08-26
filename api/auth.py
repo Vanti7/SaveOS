@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from api.database import get_db, Agent
+from api.database import get_db, Agent, Tenant
 
 security = HTTPBearer()
 
@@ -32,6 +32,12 @@ class AuthManager:
         hashed_token = AuthManager.hash_token(token)
         agent = db.query(Agent).filter(Agent.token == hashed_token).first()
         return agent
+
+    @staticmethod
+    def verify_registration_secret(db: Session, secret: str) -> Optional[Tenant]:
+        """Vérifie un secret d'enregistrement de tenant et retourne le tenant correspondant"""
+        hashed_secret = AuthManager.hash_token(secret)
+        return db.query(Tenant).filter(Tenant.registration_secret_hash == hashed_secret).first()
 
 async def get_current_agent(
     credentials: HTTPAuthorizationCredentials = Depends(security),

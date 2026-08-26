@@ -21,7 +21,8 @@ from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
 from api.database import get_db, create_tables, Agent, Job, Snapshot, Tenant
 from api.schemas import (
     AgentRegister, AgentResponse, AgentHeartbeat, AgentStats,
-    JobCreate, JobResponse, SnapshotResponse
+    JobCreate, JobResponse, JobType, SnapshotResponse,
+    TenantCreate, TenantResponse, TenantCreateResponse
 )
 from api.auth import AuthManager, get_current_agent, get_current_principal, require_dashboard, Principal
 from api.routers.restore import router as restore_router
@@ -94,13 +95,21 @@ async def register_agent(
     agent_data: AgentRegister,
     db: Session = Depends(get_db)
 ):
-    """Enregistre un nouvel agent de sauvegarde"""
-    
-    # Vérifier si l'agent existe déjà (par hostname)
+    """Enregistre un nouvel agent de sauvegarde, rattaché au tenant identifié
+    par le secret d'enregistrement (voir docs/adr/0004-multi-tenancy-avancee.md)."""
+
+    tenant = AuthManager.verify_registration_secret(db, agent_data.registration_secret)
+    if not tenant:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Secret d'enregistrement invalide"
+        )
+
+    # Vérifier si l'agent existe déjà (par hostname, dans ce tenant uniquement)
     existing_agent = db.query(Agent).filter(
-        Agent.hostname == agent_data.hostname
+        Agent.tenant_id == tenant.id, Agent.hostname == agent_data.hostname
     ).first()
-    
+
     if existing_agent:
         # Mettre à jour l'agent existant
         existing_agent.platform = agent_data.platform
@@ -110,15 +119,7 @@ async def register_agent(
         db.commit()
         db.refresh(existing_agent)
         return existing_agent
-    
-    # Créer un tenant par défaut si aucun n'existe
-    tenant = db.query(Tenant).first()
-    if not tenant:
-        tenant = Tenant(name="default", quota_bytes=10000000000)  # 10GB
-        db.add(tenant)
-        db.commit()
-        db.refresh(tenant)
-    
+
     # Générer un token pour le nouvel agent
     token = AuthManager.generate_agent_token()
     hashed_token = AuthManager.hash_token(token)
@@ -215,7 +216,26 @@ async def create_backup_job(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Un agent ne peut créer des jobs que pour lui-même"
         )
-    
+
+    # Quota de stockage du tenant : vérifie l'espace déjà consommé par les
+    # sauvegardes terminées (pas la taille du job à venir, impossible à
+    # connaître à l'avance) — simplification assumée, voir
+    # docs/adr/0004-multi-tenancy-avancee.md. Ne s'applique qu'aux backups.
+    if job_data.type == JobType.BACKUP:
+        tenant = db.query(Tenant).filter(Tenant.id == current_agent.tenant_id).first()
+        consumed_bytes = (
+            db.query(func.coalesce(func.sum(Snapshot.size_bytes), 0))
+            .join(Job, Snapshot.job_id == Job.id)
+            .join(Agent, Job.agent_id == Agent.id)
+            .filter(Agent.tenant_id == tenant.id)
+            .scalar()
+        )
+        if consumed_bytes >= tenant.quota_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Quota de stockage du tenant dépassé"
+            )
+
     # Créer le job
     new_job = Job(
         agent_id=current_agent.id,
@@ -304,36 +324,47 @@ async def get_job_status(
 
 @app.get(f"{API_PREFIX}/agents", response_model=List[AgentResponse])
 async def list_all_agents(
+    tenant_id: Optional[int] = None,
     _: None = Depends(require_dashboard),
     db: Session = Depends(get_db)
 ):
-    """Liste tous les agents (tableau de bord uniquement)"""
-    return db.query(Agent).order_by(Agent.created_at.desc()).all()
+    """Liste les agents (tableau de bord uniquement), tous tenants confondus
+    si tenant_id est omis (vue super-admin), sinon filtrés par tenant."""
+    query = db.query(Agent)
+    if tenant_id is not None:
+        query = query.filter(Agent.tenant_id == tenant_id)
+    return query.order_by(Agent.created_at.desc()).all()
 
 @app.get(f"{API_PREFIX}/jobs", response_model=List[JobResponse])
 async def list_all_jobs(
     agent_id: Optional[int] = None,
+    tenant_id: Optional[int] = None,
     _: None = Depends(require_dashboard),
     db: Session = Depends(get_db)
 ):
-    """Liste tous les jobs, éventuellement filtrés par agent (tableau de bord uniquement)"""
+    """Liste tous les jobs, éventuellement filtrés par agent et/ou tenant (tableau de bord uniquement)"""
     query = db.query(Job)
     if agent_id is not None:
         query = query.filter(Job.agent_id == agent_id)
+    if tenant_id is not None:
+        query = query.join(Agent, Job.agent_id == Agent.id).filter(Agent.tenant_id == tenant_id)
     return query.order_by(Job.created_at.desc()).all()
 
 @app.get(f"{API_PREFIX}/snapshots", response_model=List[SnapshotResponse])
 async def list_all_snapshots(
+    tenant_id: Optional[int] = None,
     _: None = Depends(require_dashboard),
     db: Session = Depends(get_db)
 ):
-    """Liste tous les snapshots, tous agents confondus (tableau de bord uniquement)"""
-    rows = (
+    """Liste les snapshots (tableau de bord uniquement), tous tenants
+    confondus si tenant_id est omis, sinon filtrés par tenant."""
+    query = (
         db.query(Snapshot, Job.agent_id)
         .join(Job, Snapshot.job_id == Job.id)
-        .order_by(Snapshot.created_at.desc())
-        .all()
     )
+    if tenant_id is not None:
+        query = query.join(Agent, Job.agent_id == Agent.id).filter(Agent.tenant_id == tenant_id)
+    rows = query.order_by(Snapshot.created_at.desc()).all()
     return [
         SnapshotResponse(
             id=s.id, job_id=s.job_id, agent_id=agent_id, name=s.name,
@@ -412,18 +443,25 @@ async def download_agent_installer(platform: str):
 async def provision_agent(
     hostname: str,
     platform: str,
+    tenant_id: int,
+    _: None = Depends(require_dashboard),
     db: Session = Depends(get_db)
 ):
-    """Provisionne un nouvel agent avec token pré-généré"""
-    
-    # Créer un tenant par défaut si aucun n'existe
-    tenant = db.query(Tenant).first()
+    """Provisionne un nouvel agent avec token pré-généré, pour un tenant
+    explicite. Réservé au tableau de bord (voir
+    docs/adr/0004-multi-tenancy-avancee.md) : émettre un token d'agent
+    valide sans authentification était une faille pré-existante."""
+
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
-        tenant = Tenant(name="default", quota_bytes=10000000000)  # 10GB
-        db.add(tenant)
-        db.commit()
-        db.refresh(tenant)
-    
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant introuvable")
+
+    if db.query(Agent).filter(Agent.tenant_id == tenant.id, Agent.hostname == hostname).first():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Un agent avec ce hostname existe déjà pour ce tenant"
+        )
+
     # Générer un token pour le nouvel agent
     token = AuthManager.generate_agent_token()
     hashed_token = AuthManager.hash_token(token)
@@ -448,6 +486,45 @@ async def provision_agent(
         "platform": platform,
         "api_url": f"https://{os.getenv('API_HOST', 'localhost')}:{os.getenv('API_PORT', '8000')}"
     }
+
+@app.post(f"{API_PREFIX}/tenants", response_model=TenantCreateResponse)
+async def create_tenant(
+    tenant_data: TenantCreate,
+    _: None = Depends(require_dashboard),
+    db: Session = Depends(get_db)
+):
+    """Crée un tenant et retourne son secret d'enregistrement en clair, une
+    seule fois (comme le token d'un agent) — réservé au tableau de bord."""
+
+    secret = AuthManager.generate_agent_token()
+    tenant = Tenant(
+        name=tenant_data.name,
+        quota_bytes=tenant_data.quota_bytes,
+        registration_secret_hash=AuthManager.hash_token(secret)
+    )
+    if tenant_data.retention_policy is not None:
+        tenant.retention_policy = json.dumps(tenant_data.retention_policy)
+
+    db.add(tenant)
+    db.commit()
+    db.refresh(tenant)
+
+    return TenantCreateResponse(
+        id=tenant.id,
+        name=tenant.name,
+        quota_bytes=tenant.quota_bytes,
+        retention_policy=tenant.retention_policy,
+        created_at=tenant.created_at,
+        registration_secret=secret
+    )
+
+@app.get(f"{API_PREFIX}/tenants", response_model=List[TenantResponse])
+async def list_tenants(
+    _: None = Depends(require_dashboard),
+    db: Session = Depends(get_db)
+):
+    """Liste les tenants (sans leur secret d'enregistrement) — réservé au tableau de bord."""
+    return db.query(Tenant).order_by(Tenant.created_at.desc()).all()
 
 AGENT_SOURCE_DIR = Path(__file__).resolve().parent.parent / 'agent'
 AGENT_SOURCE_FILES = ['__init__.py', 'cli.py', 'config.py', 'api_client.py', 'service.py']
