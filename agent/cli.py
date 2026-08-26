@@ -28,14 +28,22 @@ def cli(ctx, config_dir):
 
 @cli.command()
 @click.option('--api-url', help='URL de l\'API SaveOS')
+@click.option('--verify-ssl/--no-verify-ssl', default=None,
+              help='Force la vérification du certificat TLS (par défaut : '
+                   'auto-détecté selon l\'hôte, désactivé seulement pour localhost/127.0.0.1)')
 @click.pass_context
-def register(ctx, api_url):
+def register(ctx, api_url, verify_ssl):
     """Enregistre l'agent auprès du serveur SaveOS"""
     config_manager = ctx.obj['config']
     config = config_manager.load_config()
-    
+
     if api_url:
         config['api_url'] = api_url
+        if verify_ssl is None:
+            config['verify_ssl'] = AgentConfig._default_verify_ssl(api_url)
+        config_manager.save_config(config)
+    if verify_ssl is not None:
+        config['verify_ssl'] = verify_ssl
         config_manager.save_config(config)
     
     click.echo(f"🔗 Enregistrement auprès de {config['api_url']}...")

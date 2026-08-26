@@ -12,9 +12,13 @@ const apiClient = axios.create({
   },
 })
 
-// Pour le MVP, on désactive la vérification SSL
+// Vérifie le certificat TLS sauf pour les hôtes de dev connus
+// (localhost/127.0.0.1, certificat self-signed généré par
+// scripts/generate_certs.sh) — voir docs/adr/0003-certificats-tls-production.md.
+const API_HOSTNAME = new URL(API_BASE_URL).hostname
+const SHOULD_VERIFY_SSL = !['localhost', '127.0.0.1'].includes(API_HOSTNAME)
 apiClient.defaults.httpsAgent = new (require('https').Agent)({
-  rejectUnauthorized: false
+  rejectUnauthorized: SHOULD_VERIFY_SSL
 })
 
 // Client vers les routes proxy Next.js (web/app/api/**), sans baseURL : les
@@ -175,7 +179,7 @@ export const api = {
       hostname,
       platform,
       token: `agent_token_${Date.now()}`, // Token temporaire
-      verify_ssl: false
+      verify_ssl: SHOULD_VERIFY_SSL
     }
   }
 }

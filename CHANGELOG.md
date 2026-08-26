@@ -6,6 +6,17 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.6.0] - 2026-08-26
+
+### ✨ Nouvelles fonctionnalités
+
+- Traefik route désormais réellement api/web vers Let's Encrypt en production (certificat valide, plus seulement le dashboard Traefik)
+- verify_ssl/rejectUnauthorized déduits de l'hôte côté agent, API et dashboard web (fin de la désactivation systématique de la vérification TLS)
+- Correction : conflit container_name/deploy.replicas rendant docker-compose.prod.yml structurellement invalide
+- Dashboard Traefik retiré de l'exposition directe non authentifiée sur le port 8080
+
+---
+
 ## [1.5.0] - 2026-08-21
 
 ### ✨ Nouvelles fonctionnalités
@@ -53,7 +64,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 
 ### Prévu
-- Certificats TLS valides
 - Multi-tenancy avancée
 - Gestion des utilisateurs et authentification
 

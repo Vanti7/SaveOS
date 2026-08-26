@@ -6,7 +6,6 @@ services:
       dockerfile: Dockerfile.prod
       target: api-prod
     image: ghcr.io/saveos/api:latest
-    container_name: saveos_api_prod
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
@@ -19,8 +18,17 @@ services:
       - ./certs:/app/certs:ro
       - borg_repos:/tmp/borg_repos
       - restore_packages:/tmp/restore_packages
-    ports:
-      - "8000:8000"
+    # Pas de port hôte direct : tout le trafic externe passe par Traefik
+    # (voir labels ci-dessous), seul point qui termine le TLS avec un
+    # certificat Let's Encrypt valide (docs/adr/0003-certificats-tls-production.md).
+    expose:
+      - "8000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.${DOMAIN}`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
     deploy:
       replicas: ${API_REPLICAS:-2}
       resources:
@@ -102,13 +110,23 @@ services:
       dockerfile: Dockerfile.prod
       target: web-prod
     image: ghcr.io/saveos/web:latest
-    container_name: saveos_web_prod
     environment:
       NEXT_PUBLIC_API_URL: ${API_URL:-https://api.saveos.com}
+      # Appel serveur-à-serveur (web/app/lib/serverApi.ts) : reste sur le
+      # réseau Docker interne, jamais exposé publiquement, donc en clair
+      # (l'API ne termine plus de TLS elle-même, voir plus haut) — à ne pas
+      # confondre avec NEXT_PUBLIC_API_URL, qui traverse Traefik.
+      API_URL: http://api:8000
       DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN}
       NODE_ENV: production
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`app.${DOMAIN}`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.web.loadbalancer.server.port=3000"
     deploy:
       replicas: ${WEB_REPLICAS:-2}
       resources:
@@ -218,7 +236,12 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"  # Dashboard Traefik
+      # Port du dashboard Traefik (--api.dashboard=true) volontairement non
+      # publié : il n'est plus exposé en clair et sans authentification —
+      # reste joignable uniquement via https://traefik.${DOMAIN} (labels
+      # ci-dessous, TLS Let's Encrypt). Authentification applicative
+      # (basicauth) volontairement hors scope, voir
+      # docs/adr/0003-certificats-tls-production.md.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt_data:/letsencrypt
