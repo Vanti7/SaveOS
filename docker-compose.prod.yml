@@ -6,7 +6,6 @@ services:
       dockerfile: Dockerfile.prod
       target: api-prod
     image: ghcr.io/saveos/api:latest
-    container_name: saveos_api_prod
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
@@ -102,7 +101,6 @@ services:
       dockerfile: Dockerfile.prod
       target: web-prod
     image: ghcr.io/saveos/web:latest
-    container_name: saveos_web_prod
     environment:
       NEXT_PUBLIC_API_URL: ${API_URL:-https://api.saveos.com}
       DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN}
