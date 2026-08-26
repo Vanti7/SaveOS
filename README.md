@@ -132,13 +132,23 @@ Documentation interactive disponible sur : https://localhost:8000/docs
 
 ### Chiffrement
 
-- **Transport** : TLS 1.2+ obligatoire (certificats self-signed pour le MVP)
+- **Transport** : TLS 1.2+ obligatoire. En local (`docker-compose.yml`), certificat self-signed généré par `scripts/generate_certs.sh` (`CN=localhost`). En production (`docker-compose.prod.yml`), certificat Let's Encrypt valide obtenu automatiquement par Traefik (voir section suivante) — les clients (agent, dashboard) vérifient alors réellement le certificat (`verify_ssl`/`rejectUnauthorized` déduits de l'hôte, voir [docs/adr/0003-certificats-tls-production.md](docs/adr/0003-certificats-tls-production.md)).
 - **Données** : Chiffrement côté client via Borg avec passphrase
 - **Authentification** : Tokens provisionnés pour les agents
 
 ### Tokens
 
 Chaque agent reçoit un token unique lors de l'enregistrement. Ce token est stocké de manière sécurisée et utilisé pour toutes les communications avec l'API.
+
+### TLS en production (Traefik + Let's Encrypt)
+
+`docker-compose.prod.yml` route `api`, `web` et le dashboard Traefik exclusivement via Traefik (aucun port direct publié) ; Traefik obtient un certificat Let's Encrypt par domaine via le challenge HTTP-01. Prérequis pour un déploiement réel :
+
+- Variables d'environnement : `DOMAIN` (ex. `saveos.com`) et `ACME_EMAIL` (contact pour Let's Encrypt).
+- Enregistrements DNS pointant vers le serveur : `api.${DOMAIN}`, `app.${DOMAIN}`, `traefik.${DOMAIN}`.
+- Port 80 joignable depuis internet (challenge HTTP-01) en plus du port 443.
+
+Le dashboard Traefik (`https://traefik.${DOMAIN}`) reste sans authentification applicative — accès restreint au réseau/pare-feu, voir [docs/adr/0003-certificats-tls-production.md](docs/adr/0003-certificats-tls-production.md) pour le détail et les limites.
 
 ## 📊 Monitoring
 
@@ -222,7 +232,7 @@ Les tables sont créées automatiquement par SQLAlchemy au démarrage de l'API. 
 
 ## 🚫 Limitations du MVP
 
-- Certificats TLS self-signed (non adaptés à la production)
+- Dashboard Traefik en production sans authentification applicative (voir [docs/adr/0003-certificats-tls-production.md](docs/adr/0003-certificats-tls-production.md))
 - Multi-tenancy basique
 - Pas de restauration granulaire via l'interface
 - Authentification simplifiée (pas de gestion utilisateurs)
@@ -271,7 +281,7 @@ Pour le support et les questions :
 - [x] Monitoring avancé (Grafana) ✅
 - [x] Tests automatisés ✅
 - [x] Packaging des agents (exe/dmg/deb) ✅
-- [ ] Certificats TLS valides
+- [x] Certificats TLS valides ✅
 - [ ] Multi-tenancy avancée
 - [ ] Gestion des utilisateurs et rôles
 - [ ] Facturation et quotas
