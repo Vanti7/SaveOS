@@ -2,14 +2,15 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { 
-  HomeIcon, 
-  ServerIcon, 
-  CameraIcon, 
+import {
+  HomeIcon,
+  ServerIcon,
+  CameraIcon,
   DownloadIcon,
   SettingsIcon,
   ActivityIcon
 } from 'lucide-react'
+import { useTenant } from './TenantProvider'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
@@ -22,13 +23,29 @@ const navigation = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const { tenants, selectedTenantId, setSelectedTenantId, loading: tenantsLoading } = useTenant()
 
   return (
     <div className="flex flex-col w-64 bg-white shadow-lg">
       <div className="flex items-center justify-center h-16 bg-primary-600">
         <h1 className="text-xl font-bold text-white">SaveOS</h1>
       </div>
-      
+
+      <div className="px-4 py-3 border-b border-gray-200">
+        <label className="block text-xs font-medium text-gray-500 mb-1">Tenant</label>
+        <select
+          className="w-full text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white"
+          value={selectedTenantId ?? ''}
+          disabled={tenantsLoading}
+          onChange={(e) => setSelectedTenantId(e.target.value === '' ? null : Number(e.target.value))}
+        >
+          <option value="">Tous les tenants</option>
+          {tenants.map((tenant) => (
+            <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+          ))}
+        </select>
+      </div>
+
       <nav className="flex-1 px-4 py-6 space-y-2">
         {navigation.map((item) => {
           const isActive = pathname === item.href
