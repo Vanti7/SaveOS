@@ -7,20 +7,22 @@ import { formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 import RestoreModal from '../components/RestoreModal'
+import { useTenant } from '../components/TenantProvider'
 
 export default function SnapshotsPage() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([])
   const [loading, setLoading] = useState(true)
   const [restoreSnapshot, setRestoreSnapshot] = useState<Snapshot | null>(null)
+  const { selectedTenantId } = useTenant()
 
   useEffect(() => {
     fetchSnapshots()
-  }, [])
+  }, [selectedTenantId])
 
   const fetchSnapshots = async () => {
     try {
       setLoading(true)
-      const data = await api.getSnapshots()
+      const data = await api.getSnapshots(selectedTenantId ?? undefined)
       setSnapshots(data)
     } catch (error) {
       console.error('Erreur lors de la récupération des snapshots:', error)

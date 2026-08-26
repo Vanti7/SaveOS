@@ -6,19 +6,21 @@ import { api, Agent } from '../lib/api'
 import { formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import toast from 'react-hot-toast'
+import { useTenant } from '../components/TenantProvider'
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
+  const { selectedTenantId } = useTenant()
 
   useEffect(() => {
     fetchAgents()
-  }, [])
+  }, [selectedTenantId])
 
   const fetchAgents = async () => {
     try {
       setLoading(true)
-      const data = await api.getAgents()
+      const data = await api.getAgents(selectedTenantId ?? undefined)
       setAgents(data)
     } catch (error) {
       console.error('Erreur lors de la récupération des agents:', error)

@@ -6,22 +6,24 @@ import { api, Job } from '../lib/api'
 import { formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import toast from 'react-hot-toast'
+import { useTenant } from '../components/TenantProvider'
 
 export default function MonitoringPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
+  const { selectedTenantId } = useTenant()
 
   useEffect(() => {
     fetchJobs()
     // Actualiser toutes les 30 secondes
     const interval = setInterval(fetchJobs, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [selectedTenantId])
 
   const fetchJobs = async () => {
     try {
       setLoading(true)
-      const data = await api.getJobs()
+      const data = await api.getJobs(undefined, selectedTenantId ?? undefined)
       setJobs(data)
     } catch (error) {
       console.error('Erreur lors de la récupération des jobs:', error)

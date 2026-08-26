@@ -5,6 +5,7 @@ import { DownloadIcon, CopyIcon, CheckIcon, ServerIcon, PackageIcon } from 'luci
 import toast from 'react-hot-toast'
 import fileDownload from 'js-file-download'
 import { api } from '../lib/api'
+import { useTenant } from '../components/TenantProvider'
 
 interface PlatformInfo {
   id: string
@@ -63,8 +64,14 @@ export default function DownloadsPage() {
   const [copying, setCopying] = useState<string>('')
   const [downloading, setDownloading] = useState<string>('')
   const [configData, setConfigData] = useState<any>(null)
+  const { selectedTenantId } = useTenant()
 
   const generateAgentPackage = async (platform: string) => {
+    if (selectedTenantId === null) {
+      toast.error('Sélectionnez un tenant avant de provisionner un agent')
+      return
+    }
+
     try {
       setDownloading(platform)
 
@@ -74,10 +81,16 @@ export default function DownloadsPage() {
       // Provisionner l'agent sur le serveur, puis télécharger le package
       // source pré-configuré (voir web/app/lib/api.ts pour l'installeur
       // natif exe/dmg/deb, qui ne nécessite pas ce provisioning).
-      const provisionData = await api.provisionAgent(hostname, platform)
+      const provisionData = await api.provisionAgent(hostname, platform, selectedTenantId)
       setConfigData(provisionData)
 
-      const blob = await api.downloadAgent(platform)
+      // Secret d'enregistrement du tenant, nécessaire à l'auto-enregistrement
+      // de l'agent une fois installé (affiché une seule fois à la création
+      // du tenant, voir la page Paramètres) — voir
+      // docs/adr/0004-multi-tenancy-avancee.md.
+      const registrationSecret = prompt("Secret d'enregistrement du tenant :") || ''
+
+      const blob = await api.downloadAgent(platform, registrationSecret)
       const filename = `saveos-agent-${hostname}-${platform}.${platform === 'windows' ? 'zip' : 'tar.gz'}`
       fileDownload(blob, filename)
 
