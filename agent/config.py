@@ -6,10 +6,18 @@ import json
 import platform
 from pathlib import Path
 from typing import Dict, Any, Optional
+from urllib.parse import urlparse
 
 class AgentConfig:
     """Gestionnaire de configuration de l'agent"""
-    
+
+    @staticmethod
+    def _default_verify_ssl(api_url: str) -> bool:
+        """Vérifier le certificat TLS par défaut, sauf pour les hôtes de dev
+        connus (localhost/127.0.0.1, certificat self-signed généré par
+        scripts/generate_certs.sh) : voir docs/adr/0003-certificats-tls-production.md."""
+        return urlparse(api_url).hostname not in ("localhost", "127.0.0.1")
+
     def __init__(self, config_dir: Optional[str] = None):
         if config_dir:
             self.config_dir = Path(config_dir)
@@ -29,15 +37,16 @@ class AgentConfig:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         
         # Configuration par défaut
+        default_api_url = "https://localhost:8000"
         self.default_config = {
-            "api_url": "https://localhost:8000",
+            "api_url": default_api_url,
             "hostname": platform.node(),
             "platform": platform.system().lower(),
             "source_paths": self._get_default_source_paths(),
             "repo_path": str(self.config_dir / "borg_repo"),
             "passphrase": "changeme_default_passphrase",
             "heartbeat_interval": 300,  # 5 minutes
-            "verify_ssl": False,  # Pour le MVP avec certificat self-signed
+            "verify_ssl": self._default_verify_ssl(default_api_url),
             "backup_schedule": "0 2 * * *",  # Tous les jours à 2h du matin
         }
     

@@ -18,6 +18,7 @@ def test_load_config_creates_file_with_defaults_on_first_run(tmp_path):
 
     assert config['api_url'] == 'https://localhost:8000'
     assert config['heartbeat_interval'] == 300
+    assert config['verify_ssl'] is False  # hôte par défaut = localhost (self-signed)
     assert (tmp_path / 'config.json').exists()
 
 
@@ -78,3 +79,17 @@ def test_default_source_paths_linux(mock_system, tmp_path):
     config_manager = AgentConfig(config_dir=str(tmp_path))
     paths = config_manager._get_default_source_paths()
     assert any('Videos' in p for p in paths)
+
+
+# --- _default_verify_ssl : dérivation selon l'hôte (docs/adr/0003) ---
+
+def test_default_verify_ssl_is_false_for_localhost():
+    assert AgentConfig._default_verify_ssl('https://localhost:8000') is False
+
+
+def test_default_verify_ssl_is_false_for_loopback_ip():
+    assert AgentConfig._default_verify_ssl('https://127.0.0.1:8000') is False
+
+
+def test_default_verify_ssl_is_true_for_real_host():
+    assert AgentConfig._default_verify_ssl('https://api.saveos.com') is True
