@@ -2,7 +2,7 @@
 Configuration de la base de données PostgreSQL pour SaveOS
 """
 import os
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, BigInteger, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, BigInteger, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -24,6 +24,10 @@ class Tenant(Base):
     name = Column(String(255), nullable=False)
     quota_bytes = Column(BigInteger, default=1000000000)  # 1GB par défaut
     retention_policy = Column(Text, default='{"daily": 30, "weekly": 12, "monthly": 12}')
+    # Secret d'auto-enregistrement (agent.cli register), hashé comme Agent.token
+    # (AuthManager.hash_token) — jamais retourné après la création du tenant,
+    # voir docs/adr/0004-multi-tenancy-avancee.md.
+    registration_secret_hash = Column(String(128), unique=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relations
@@ -47,7 +51,10 @@ class User(Base):
 class Agent(Base):
     """Table des agents de sauvegarde"""
     __tablename__ = "agents"
-    
+    # hostname unique par tenant seulement (pas globalement) : deux tenants
+    # peuvent chacun avoir une machine "DESKTOP-01".
+    __table_args__ = (UniqueConstraint('tenant_id', 'hostname', name='uq_agent_tenant_hostname'),)
+
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     hostname = Column(String(255), nullable=False)
