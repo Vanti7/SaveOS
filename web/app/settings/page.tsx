@@ -1,8 +1,110 @@
 'use client'
 
 import { useState } from 'react'
-import { SettingsIcon, SaveIcon, RefreshCwIcon } from 'lucide-react'
+import { SettingsIcon, SaveIcon, RefreshCwIcon, UsersIcon, PlusIcon, CopyIcon, CheckIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { api } from '../lib/api'
+import { useTenant } from '../components/TenantProvider'
+
+function TenantsCard() {
+  const { tenants, refreshTenants, loading } = useTenant()
+  const [newTenantName, setNewTenantName] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [newSecret, setNewSecret] = useState<{ name: string; secret: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const handleCreate = async () => {
+    if (!newTenantName.trim()) return
+    try {
+      setCreating(true)
+      const tenant = await api.createTenant(newTenantName.trim())
+      setNewSecret({ name: tenant.name, secret: tenant.registration_secret })
+      setNewTenantName('')
+      await refreshTenants()
+      toast.success(`Tenant "${tenant.name}" créé`)
+    } catch (error) {
+      toast.error('Erreur lors de la création du tenant')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const copySecret = async () => {
+    if (!newSecret) return
+    try {
+      await navigator.clipboard.writeText(newSecret.secret)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch (error) {
+      toast.error('Erreur lors de la copie')
+    }
+  }
+
+  return (
+    <div className="card mt-8">
+      <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+        <UsersIcon className="w-5 h-5 mr-2" />
+        Tenants
+      </h2>
+
+      {newSecret && (
+        <div className="mb-6 p-4 bg-primary-50 rounded-lg">
+          <p className="text-sm font-medium text-primary-900 mb-2">
+            Secret d'enregistrement de "{newSecret.name}" — affiché une seule fois, à transmettre aux agents de ce tenant :
+          </p>
+          <div className="flex items-center justify-between bg-white rounded-lg p-3">
+            <code className="text-xs text-gray-800 flex-1 mr-2 break-all">{newSecret.secret}</code>
+            <button onClick={copySecret} className="text-gray-500 hover:text-gray-700 flex-shrink-0">
+              {copied ? <CheckIcon className="w-4 h-4 text-green-500" /> : <CopyIcon className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-end space-x-3 mb-6">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Nouveau tenant</label>
+          <input
+            type="text"
+            className="input-field"
+            placeholder="Nom du tenant"
+            value={newTenantName}
+            onChange={(e) => setNewTenantName(e.target.value)}
+          />
+        </div>
+        <button onClick={handleCreate} disabled={creating || !newTenantName.trim()} className="btn-primary flex items-center">
+          <PlusIcon className="w-4 h-4 mr-2" />
+          Créer
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-gray-500">Chargement...</p>
+      ) : tenants.length === 0 ? (
+        <p className="text-sm text-gray-500">Aucun tenant pour l'instant.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-gray-500 border-b border-gray-200">
+              <th className="pb-2">Nom</th>
+              <th className="pb-2">Quota</th>
+              <th className="pb-2">Créé le</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tenants.map((tenant) => (
+              <tr key={tenant.id} className="border-b border-gray-100">
+                <td className="py-2">{tenant.name}</td>
+                <td className="py-2">{(tenant.quota_bytes / 1e9).toFixed(1)} GB</td>
+                <td className="py-2">{new Date(tenant.created_at).toLocaleDateString('fr-FR')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState({
@@ -184,6 +286,8 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <TenantsCard />
 
       {/* Informations système */}
       <div className="card mt-8">
