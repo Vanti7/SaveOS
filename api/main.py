@@ -377,17 +377,21 @@ async def list_all_snapshots(
 # === ENDPOINTS TÉLÉCHARGEMENT D'AGENTS ===
 
 @app.get("/download/agent/{platform}")
-async def download_agent(platform: str):
-    """Télécharge un package d'agent pour une plateforme donnée"""
-    
+async def download_agent(platform: str, registration_secret: str = ""):
+    """Télécharge un package d'agent pour une plateforme donnée. Le secret
+    d'enregistrement (obtenu via POST /api/v1/tenants) est optionnel ici et
+    embarqué tel quel dans config.json — sans lui, l'auto-enregistrement de
+    l'agent installé depuis ce package échouera (401), voir
+    docs/adr/0004-multi-tenancy-avancee.md."""
+
     if platform not in ['windows', 'macos', 'linux']:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Plateforme non supportée"
         )
-    
+
     # Générer le package d'agent
-    agent_package = generate_agent_package(platform)
+    agent_package = generate_agent_package(platform, registration_secret)
     
     # Déterminer le type de contenu et l'extension
     if platform == 'windows':
@@ -529,7 +533,7 @@ async def list_tenants(
 AGENT_SOURCE_DIR = Path(__file__).resolve().parent.parent / 'agent'
 AGENT_SOURCE_FILES = ['__init__.py', 'cli.py', 'config.py', 'api_client.py', 'service.py']
 
-def generate_agent_package(platform: str) -> bytes:
+def generate_agent_package(platform: str, registration_secret: str = "") -> bytes:
     """Génère un package d'installation (code source) pour la plateforme
     donnée, à partir des vrais fichiers du package agent/ — plus de copie
     dupliquée et obsolète : ce qui est livré est ce qui tourne réellement
@@ -623,6 +627,7 @@ echo "L'agent SaveOS est maintenant installe."
         "api_url": f"https://{api_host}:{os.getenv('API_PORT', '8000')}",
         "hostname": f"{platform}-agent",
         "platform": platform,
+        "registration_secret": registration_secret,
         "verify_ssl": api_host not in ("localhost", "127.0.0.1"),
         "heartbeat_interval": 300
     }
