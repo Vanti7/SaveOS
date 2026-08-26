@@ -45,7 +45,8 @@ def test_schemas():
     # Test création d'un schéma agent
     agent_data = {
         "hostname": "test-host",
-        "platform": "linux"
+        "platform": "linux",
+        "registration_secret": "test-secret"
     }
     agent_schema = AgentRegister(**agent_data)
     assert agent_schema.hostname == "test-host"

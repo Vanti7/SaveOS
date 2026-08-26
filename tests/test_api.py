@@ -21,16 +21,26 @@ def test_metrics(client):
     assert response.headers["content-type"].startswith("text/plain")
 
 @pytest.mark.integration
-def test_register_agent():
+def test_register_agent(monkeypatch):
     """Test d'enregistrement d'un agent"""
+    monkeypatch.setenv("DASHBOARD_API_TOKEN", "test-dashboard-token")
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={"name": "integration-test-tenant"},
+        headers={"Authorization": "Bearer test-dashboard-token"},
+    )
+    assert tenant_response.status_code == 200
+    registration_secret = tenant_response.json()["registration_secret"]
+
     agent_data = {
         "hostname": "test-host",
         "platform": "linux",
+        "registration_secret": registration_secret,
         "config": {"test": "value"}
     }
     response = client.post("/api/v1/agents/register", json=agent_data)
     assert response.status_code == 200
-    
+
     data = response.json()
     assert data["hostname"] == "test-host"
     assert data["platform"] == "linux"
