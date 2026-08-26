@@ -537,11 +537,16 @@ echo "Installation terminee !"
 echo "L'agent SaveOS est maintenant installe."
 '''
 
+    # False seulement pour localhost/127.0.0.1 (self-signed connu) — sinon
+    # True, cohérent avec agent.config.AgentConfig._default_verify_ssl (pas
+    # d'import croisé api/<->agent, AGENT.MD impose la séparation stricte).
+    # Voir docs/adr/0003-certificats-tls-production.md.
+    api_host = os.getenv('API_HOST', 'localhost')
     config = {
-        "api_url": f"https://{os.getenv('API_HOST', 'localhost')}:{os.getenv('API_PORT', '8000')}",
+        "api_url": f"https://{api_host}:{os.getenv('API_PORT', '8000')}",
         "hostname": f"{platform}-agent",
         "platform": platform,
-        "verify_ssl": False,
+        "verify_ssl": api_host not in ("localhost", "127.0.0.1"),
         "heartbeat_interval": 300
     }
 

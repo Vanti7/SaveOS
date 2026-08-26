@@ -66,3 +66,21 @@ def test_generate_agent_package_macos_is_a_valid_tar_gz():
     with tarfile.open(fileobj=io.BytesIO(package), mode='r:gz') as tf:
         config = json.loads(tf.extractfile('config.json').read())
         assert config['platform'] == 'macos'
+
+
+def test_generate_agent_package_verify_ssl_false_for_default_localhost_host(monkeypatch):
+    monkeypatch.delenv('API_HOST', raising=False)
+    package = generate_agent_package('linux')
+
+    with tarfile.open(fileobj=io.BytesIO(package), mode='r:gz') as tf:
+        config = json.loads(tf.extractfile('config.json').read())
+        assert config['verify_ssl'] is False
+
+
+def test_generate_agent_package_verify_ssl_true_for_public_api_host(monkeypatch):
+    monkeypatch.setenv('API_HOST', 'api.saveos.com')
+    package = generate_agent_package('windows')
+
+    with zipfile.ZipFile(io.BytesIO(package)) as zf:
+        config = json.loads(zf.read('config.json'))
+        assert config['verify_ssl'] is True
