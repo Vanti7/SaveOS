@@ -91,7 +91,7 @@ def test_agent_api_client(mock_post):
 
     # Test du client
     client = SaveOSAPIClient("https://test.api", "test-token")
-    result = client.register_agent("test-host", "linux")
+    result = client.register_agent("test-host", "linux", "test-registration-secret")
 
     assert result is not None
     mock_post.assert_called_once()

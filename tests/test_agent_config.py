@@ -19,6 +19,7 @@ def test_load_config_creates_file_with_defaults_on_first_run(tmp_path):
     assert config['api_url'] == 'https://localhost:8000'
     assert config['heartbeat_interval'] == 300
     assert config['verify_ssl'] is False  # hôte par défaut = localhost (self-signed)
+    assert config['registration_secret'] is None
     assert (tmp_path / 'config.json').exists()
 
 

@@ -48,6 +48,7 @@ class AgentConfig:
             "heartbeat_interval": 300,  # 5 minutes
             "verify_ssl": self._default_verify_ssl(default_api_url),
             "backup_schedule": "0 2 * * *",  # Tous les jours à 2h du matin
+            "registration_secret": None,  # requis par register (voir docs/adr/0004-multi-tenancy-avancee.md)
         }
     
     def _get_default_source_paths(self) -> list:
