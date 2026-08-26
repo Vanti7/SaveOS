@@ -84,14 +84,18 @@ L'agent se configure automatiquement lors de la première utilisation. La config
 4. **Consultez les sauvegardes** : Section "Snapshots"
 5. **Monitoring en temps réel** : Section "Monitoring"
 
+### Multi-tenancy
+
+Chaque agent appartient à un **tenant** (isolation des agents/jobs/snapshots, quota de stockage — voir [docs/adr/0004-multi-tenancy-avancee.md](docs/adr/0004-multi-tenancy-avancee.md)). Depuis l'interface web (section **"Paramètres"**), créez un tenant : son **secret d'enregistrement** est affiché une seule fois, à transmettre à chaque agent qui doit le rejoindre. Le tableau de bord garde un unique token admin global (`DASHBOARD_API_TOKEN`) mais affiche un sélecteur de tenant (barre latérale) pour filtrer les listes ; "Tous les tenants" reste une vue admin valide.
+
 ### Installation d'agents
 
-Deux options depuis l'interface web (section **"Téléchargements"**), pour chaque plateforme (Windows/macOS/Linux) :
+Deux options depuis l'interface web (section **"Téléchargements"**), pour chaque plateforme (Windows/macOS/Linux) — un tenant doit être sélectionné au préalable :
 
 - **Installeur natif** (`.exe`/`.dmg`/`.deb`) : aucune dépendance Python requise, enregistre automatiquement l'agent comme service à démarrage automatique (tâche planifiée Windows, launchd macOS, systemd Linux) pendant l'installation. Construit et publié en asset sur chaque [GitHub Release](https://github.com/Vanti7/SaveOS/releases) par `.github/workflows/release.yml` (voir `packaging/` et `docs/adr/0002-packaging-agents.md`).
-- **Package source** (`.zip`/`.tar.gz`) : code source de l'agent (`agent/`) pré-configuré avec token et URL serveur, nécessite Python 3.8+ sur la machine cible.
+- **Package source** (`.zip`/`.tar.gz`) : code source de l'agent (`agent/`) pré-configuré avec token, URL serveur et secret d'enregistrement du tenant sélectionné, nécessite Python 3.8+ sur la machine cible.
 
-Dans les deux cas, l'agent apparaît automatiquement dans la liste et commence à envoyer des heartbeats une fois enregistré (`saveos-agent register`, ou automatique pour l'installeur natif via le script d'installation).
+Dans les deux cas, l'agent apparaît automatiquement dans la liste et commence à envoyer des heartbeats une fois enregistré (`saveos-agent register --registration-secret <secret>`, ou automatique pour l'installeur natif via le script d'installation).
 
 ### Commandes de l'agent (optionnel)
 
@@ -124,7 +128,9 @@ L'API expose les endpoints suivants :
 - `GET /health` : Santé de l'API
 - `GET /metrics` : Métriques Prometheus
 - `GET /download/agent/{platform}` : Télécharger un agent
-- `POST /api/v1/agents/provision` : Provisionner un agent
+- `POST /api/v1/agents/provision` : Provisionner un agent (tableau de bord uniquement)
+- `POST /api/v1/tenants` : Créer un tenant, retourne son secret d'enregistrement (tableau de bord uniquement)
+- `GET /api/v1/tenants` : Lister les tenants (tableau de bord uniquement)
 
 Documentation interactive disponible sur : https://localhost:8000/docs
 
@@ -233,7 +239,7 @@ Les tables sont créées automatiquement par SQLAlchemy au démarrage de l'API. 
 ## 🚫 Limitations du MVP
 
 - Dashboard Traefik en production sans authentification applicative (voir [docs/adr/0003-certificats-tls-production.md](docs/adr/0003-certificats-tls-production.md))
-- Multi-tenancy basique
+- Tableau de bord multi-tenant limité à un unique token admin global (pas de login par tenant — voir [docs/adr/0004-multi-tenancy-avancee.md](docs/adr/0004-multi-tenancy-avancee.md))
 - Pas de restauration granulaire via l'interface
 - Authentification simplifiée (pas de gestion utilisateurs)
 - Monitoring limité (pas de Grafana intégré)
@@ -282,7 +288,7 @@ Pour le support et les questions :
 - [x] Tests automatisés ✅
 - [x] Packaging des agents (exe/dmg/deb) ✅
 - [x] Certificats TLS valides ✅
-- [ ] Multi-tenancy avancée
+- [x] Multi-tenancy avancée ✅
 - [ ] Gestion des utilisateurs et rôles
 - [ ] Facturation et quotas
 
