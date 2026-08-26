@@ -6,6 +6,18 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.7.0] - 2026-08-26
+
+### ✨ Nouvelles fonctionnalités
+
+- Isolation multi-tenant réelle : tenants créables (POST/GET /api/v1/tenants), listes agents/jobs/snapshots filtrables par tenant_id, quota de stockage appliqué aux sauvegardes
+- Secret d'enregistrement par tenant requis pour l'auto-enregistrement d'un agent (fermait un enregistrement totalement ouvert, sans authentification)
+- provision_agent exige désormais le token dashboard et un tenant_id explicite (fermait une émission de token non authentifiée)
+- Correction : Agent.hostname unique par tenant seulement, plus globalement
+- Tableau de bord : sélecteur de tenant (barre latérale), carte de gestion des tenants dans les paramètres
+
+---
+
 ## [1.6.0] - 2026-08-26
 
 ### ✨ Nouvelles fonctionnalités
@@ -64,7 +76,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 
 ### Prévu
-- Multi-tenancy avancée
 - Gestion des utilisateurs et authentification
 
 ---

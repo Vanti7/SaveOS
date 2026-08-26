@@ -20,3 +20,33 @@ describe('httpsAgent.rejectUnauthorized (docs/adr/0003-certificats-tls-productio
     expect((apiClient.defaults.httpsAgent as any).options.rejectUnauthorized).toBe(true)
   })
 })
+
+// provisionAgent exigeait autrefois aucune authentification et appelait
+// l'API distante directement depuis le navigateur (/api/v1/agents/provision).
+// Le provisioning exige désormais le token dashboard (jamais accessible côté
+// client) : l'appel doit passer par la route proxy Next.js relative
+// (/api/agents/provision), voir docs/adr/0004-multi-tenancy-avancee.md.
+describe('api.provisionAgent', () => {
+  afterEach(() => {
+    vi.doUnmock('axios')
+    vi.resetModules()
+  })
+
+  it('appelle la route proxy relative, jamais l\'API distante directement', async () => {
+    const postMock = vi.fn().mockResolvedValue({ data: { agent_id: 1, token: 'tok' } })
+    vi.doMock('axios', () => ({
+      default: {
+        create: vi.fn(() => ({ get: vi.fn(), post: postMock, defaults: {} })),
+      },
+    }))
+
+    const { api } = await import('./api')
+    await api.provisionAgent('host', 'linux', 42)
+
+    expect(postMock).toHaveBeenCalledWith(
+      '/api/agents/provision',
+      null,
+      { params: { hostname: 'host', platform: 'linux', tenant_id: 42 } }
+    )
+  })
+})

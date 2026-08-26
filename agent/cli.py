@@ -31,8 +31,10 @@ def cli(ctx, config_dir):
 @click.option('--verify-ssl/--no-verify-ssl', default=None,
               help='Force la vérification du certificat TLS (par défaut : '
                    'auto-détecté selon l\'hôte, désactivé seulement pour localhost/127.0.0.1)')
+@click.option('--registration-secret', default=None,
+              help="Secret d'enregistrement du tenant (affiché une seule fois à la création du tenant)")
 @click.pass_context
-def register(ctx, api_url, verify_ssl):
+def register(ctx, api_url, verify_ssl, registration_secret):
     """Enregistre l'agent auprès du serveur SaveOS"""
     config_manager = ctx.obj['config']
     config = config_manager.load_config()
@@ -45,16 +47,25 @@ def register(ctx, api_url, verify_ssl):
     if verify_ssl is not None:
         config['verify_ssl'] = verify_ssl
         config_manager.save_config(config)
-    
+    if registration_secret:
+        config['registration_secret'] = registration_secret
+        config_manager.save_config(config)
+
+    if not config.get('registration_secret'):
+        click.echo("❌ Secret d'enregistrement manquant. Utilisez --registration-secret "
+                    "(fourni à la création du tenant, voir 'tenant create' côté serveur).", err=True)
+        sys.exit(1)
+
     click.echo(f"🔗 Enregistrement auprès de {config['api_url']}...")
-    
+
     # Créer le client API
     client = SaveOSAPIClient(config['api_url'], verify_ssl=config['verify_ssl'])
-    
+
     # Enregistrer l'agent
     result = client.register_agent(
         hostname=config['hostname'],
         platform=config['platform'],
+        registration_secret=config['registration_secret'],
         config={
             'source_paths': config['source_paths'],
             'repo_path': config['repo_path'],

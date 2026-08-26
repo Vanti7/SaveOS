@@ -47,7 +47,10 @@ def client(db_session):
 @pytest.fixture()
 def test_agent(db_session):
     """Crée un tenant + un agent de test et retourne (agent, token en clair)."""
-    tenant = Tenant(name="test-tenant")
+    tenant = Tenant(
+        name="test-tenant",
+        registration_secret_hash=AuthManager.hash_token("test-registration-secret"),
+    )
     db_session.add(tenant)
     db_session.commit()
     db_session.refresh(tenant)

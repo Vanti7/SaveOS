@@ -22,6 +22,10 @@ vi.mock('../components/RestoreModal', () => ({
   ),
 }))
 
+vi.mock('../components/TenantProvider', () => ({
+  useTenant: () => ({ tenants: [], selectedTenantId: null, setSelectedTenantId: vi.fn(), loading: false, refreshTenants: vi.fn() }),
+}))
+
 const snapshots = [
   {
     id: 1,

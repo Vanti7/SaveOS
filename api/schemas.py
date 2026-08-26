@@ -23,10 +23,30 @@ class AgentStatus(str, Enum):
     INACTIVE = "inactive"
     ERROR = "error"
 
+# Schémas pour les tenants
+class TenantCreate(BaseModel):
+    name: str
+    quota_bytes: Optional[int] = 1000000000  # 1GB par défaut
+    retention_policy: Optional[Dict[str, int]] = None
+
+class TenantResponse(BaseModel):
+    id: int
+    name: str
+    quota_bytes: int
+    retention_policy: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class TenantCreateResponse(TenantResponse):
+    registration_secret: str  # en clair, une seule fois (comme AgentResponse.token)
+
 # Schémas pour l'enregistrement d'agent
 class AgentRegister(BaseModel):
     hostname: str
     platform: str  # windows, macos, linux
+    registration_secret: str
     config: Optional[Dict[str, Any]] = {}
 
 class AgentResponse(BaseModel):

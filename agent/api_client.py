@@ -33,11 +33,13 @@ class SaveOSAPIClient:
             'Content-Type': 'application/json'
         })
     
-    def register_agent(self, hostname: str, platform: str, config: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Enregistre l'agent auprès du serveur"""
+    def register_agent(self, hostname: str, platform: str, registration_secret: str, config: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Enregistre l'agent auprès du serveur, rattaché au tenant identifié
+        par registration_secret (voir docs/adr/0004-multi-tenancy-avancee.md)."""
         data = {
             "hostname": hostname,
             "platform": platform,
+            "registration_secret": registration_secret,
             "config": config or {}
         }
         

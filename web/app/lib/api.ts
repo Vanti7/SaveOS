@@ -76,6 +76,18 @@ export interface ArchiveBrowseResponse {
   entries: ArchiveEntry[]
 }
 
+export interface Tenant {
+  id: number
+  name: string
+  quota_bytes: number
+  retention_policy: string
+  created_at: string
+}
+
+export interface TenantCreateResponse extends Tenant {
+  registration_secret: string // en clair, une seule fois
+}
+
 export type RestoreTarget = 'download' | 'agent'
 
 export interface RestoreJobCreate {
@@ -101,15 +113,20 @@ export const api = {
   },
 
   // Agents
-  async getAgents(): Promise<Agent[]> {
-    const response = await dashboardClient.get('/api/agents')
+  async getAgents(tenantId?: number): Promise<Agent[]> {
+    const response = await dashboardClient.get('/api/agents', {
+      params: tenantId ? { tenant_id: tenantId } : {},
+    })
     return response.data
   },
 
   // Jobs
-  async getJobs(agentId?: number): Promise<Job[]> {
+  async getJobs(agentId?: number, tenantId?: number): Promise<Job[]> {
     const response = await dashboardClient.get('/api/jobs', {
-      params: agentId ? { agent_id: agentId } : {},
+      params: {
+        ...(agentId ? { agent_id: agentId } : {}),
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+      },
     })
     return response.data
   },
@@ -121,8 +138,25 @@ export const api = {
   },
 
   // Snapshots
-  async getSnapshots(): Promise<Snapshot[]> {
-    const response = await dashboardClient.get('/api/snapshots')
+  async getSnapshots(tenantId?: number): Promise<Snapshot[]> {
+    const response = await dashboardClient.get('/api/snapshots', {
+      params: tenantId ? { tenant_id: tenantId } : {},
+    })
+    return response.data
+  },
+
+  // Tenants (multi-tenancy — voir docs/adr/0004-multi-tenancy-avancee.md)
+  async getTenants(): Promise<Tenant[]> {
+    const response = await dashboardClient.get('/api/tenants')
+    return response.data
+  },
+
+  async createTenant(name: string, quotaBytes?: number, retentionPolicy?: Record<string, number>): Promise<TenantCreateResponse> {
+    const response = await dashboardClient.post('/api/tenants', {
+      name,
+      ...(quotaBytes !== undefined ? { quota_bytes: quotaBytes } : {}),
+      ...(retentionPolicy !== undefined ? { retention_policy: retentionPolicy } : {}),
+    })
     return response.data
   },
 
@@ -149,9 +183,13 @@ export const api = {
     fileDownload(response.data, filename)
   },
 
-  // Téléchargement d'agent (package source, zip/tar.gz)
-  async downloadAgent(platform: string): Promise<Blob> {
+  // Téléchargement d'agent (package source, zip/tar.gz). registrationSecret
+  // est embarqué dans le config.json du package (nécessaire à l'auto-
+  // enregistrement de l'agent installé, voir
+  // docs/adr/0004-multi-tenancy-avancee.md).
+  async downloadAgent(platform: string, registrationSecret?: string): Promise<Blob> {
     const response = await apiClient.get(`/download/agent/${platform}`, {
+      params: registrationSecret ? { registration_secret: registrationSecret } : {},
       responseType: 'blob'
     })
     return response.data
@@ -163,11 +201,13 @@ export const api = {
     return `${API_BASE_URL}/download/agent/${platform}/installer`
   },
 
-  // Provisionne un agent (token pré-généré) avant de générer son package.
-  // hostname/platform sont des query params côté API (pas un body JSON).
-  async provisionAgent(hostname: string, platform: string) {
-    const response = await apiClient.post('/api/v1/agents/provision', null, {
-      params: { hostname, platform },
+  // Provisionne un agent (token pré-généré) pour un tenant explicite, avant
+  // de générer son package. Passe par la route proxy (tenant_id exige
+  // désormais le token dashboard, jamais accessible depuis le navigateur —
+  // voir docs/adr/0004-multi-tenancy-avancee.md).
+  async provisionAgent(hostname: string, platform: string, tenantId: number) {
+    const response = await dashboardClient.post('/api/agents/provision', null, {
+      params: { hostname, platform, tenant_id: tenantId },
     })
     return response.data
   },

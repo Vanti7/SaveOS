@@ -84,3 +84,19 @@ def test_generate_agent_package_verify_ssl_true_for_public_api_host(monkeypatch)
     with zipfile.ZipFile(io.BytesIO(package)) as zf:
         config = json.loads(zf.read('config.json'))
         assert config['verify_ssl'] is True
+
+
+def test_generate_agent_package_embeds_registration_secret_when_provided():
+    package = generate_agent_package('linux', registration_secret='tenant-secret-abc')
+
+    with tarfile.open(fileobj=io.BytesIO(package), mode='r:gz') as tf:
+        config = json.loads(tf.extractfile('config.json').read())
+        assert config['registration_secret'] == 'tenant-secret-abc'
+
+
+def test_generate_agent_package_registration_secret_empty_by_default():
+    package = generate_agent_package('linux')
+
+    with tarfile.open(fileobj=io.BytesIO(package), mode='r:gz') as tf:
+        config = json.loads(tf.extractfile('config.json').read())
+        assert config['registration_secret'] == ''
