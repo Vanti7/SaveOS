@@ -236,8 +236,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      # Pas de "8080:8080" : le dashboard Traefik (--api.dashboard=true)
-      # n'est plus exposé en clair et sans authentification sur l'hôte —
+      # Port du dashboard Traefik (--api.dashboard=true) volontairement non
+      # publié : il n'est plus exposé en clair et sans authentification —
       # reste joignable uniquement via https://traefik.${DOMAIN} (labels
       # ci-dessous, TLS Let's Encrypt). Authentification applicative
       # (basicauth) volontairement hors scope, voir
