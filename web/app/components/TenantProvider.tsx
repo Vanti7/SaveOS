@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { api, Tenant } from '../lib/api'
+import { useSession } from './SessionProvider'
 
 const STORAGE_KEY = 'saveos_selected_tenant_id'
 
@@ -21,6 +22,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [selectedTenantId, setSelectedTenantIdState] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const pathname = usePathname()
+  const { user, loading: sessionLoading } = useSession()
 
   const refreshTenants = async () => {
     try {
@@ -38,6 +40,22 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       setLoading(false)
       return
     }
+    // Attend que useSession() ait résolu avant de décider s'il faut appeler
+    // l'API, plutôt que de tenter un premier appel voué à l'échec puis un
+    // second correct juste après.
+    if (sessionLoading) {
+      return
+    }
+    if (user) {
+      // Un utilisateur connecté est toujours limité à son propre tenant et
+      // ne peut jamais lister tous les tenants (réservé au token dashboard
+      // statique, jamais utilisé depuis /login — voir
+      // docs/adr/0005-gestion-utilisateurs-roles.md) : appeler l'API
+      // échouerait systématiquement (403) à chaque navigation, pour rien.
+      setTenants([])
+      setLoading(false)
+      return
+    }
     // null = "tous les tenants" (vue super-admin) — pas d'erreur si absent
     // ou invalide, on retombe simplement sur ce défaut.
     try {
@@ -47,7 +65,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       // localStorage indisponible (navigation privée, etc.) : défaut "tous les tenants"
     }
     refreshTenants().finally(() => setLoading(false))
-  }, [pathname])
+  }, [pathname, user, sessionLoading])
 
   const setSelectedTenantId = (id: number | null) => {
     setSelectedTenantIdState(id)
