@@ -31,6 +31,9 @@ COPY worker/ ./worker/
 # Nécessaire pour generate_agent_package() : empaquette les vrais fichiers
 # agent/ à la volée (plus de copie dupliquée en string dans api/main.py).
 COPY agent/ ./agent/
+# Nécessaire pour GET /download/agent/{platform}/installer
+# (_get_current_version() lit ce fichier, voir docs/adr/0002-packaging-agents.md).
+COPY VERSION .
 
 # Permissions
 RUN chown -R saveos:saveos /app
