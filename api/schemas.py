@@ -42,6 +42,15 @@ class TenantResponse(BaseModel):
 class TenantCreateResponse(TenantResponse):
     registration_secret: str  # en clair, une seule fois (comme AgentResponse.token)
 
+class TenantUpdate(BaseModel):
+    quota_bytes: Optional[int] = None
+    retention_policy: Optional[Dict[str, int]] = None
+
+class TenantUsageResponse(TenantResponse):
+    used_bytes: int
+    quota_percent: float
+    estimated_cost: float
+
 # Schémas pour les utilisateurs et l'authentification
 class UserCreate(BaseModel):
     email: str
