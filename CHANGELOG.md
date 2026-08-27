@@ -6,6 +6,14 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.9.4] - 2026-08-27
+
+### 🐛 Corrections de bugs
+
+- Erreur claire quand l'installeur natif n'est pas encore publié (au lieu d'un 404 opaque de GitHub)
+
+---
+
 ## [1.9.3] - 2026-08-27
 
 ### 🐛 Corrections de bugs
