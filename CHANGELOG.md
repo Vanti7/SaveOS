@@ -6,6 +6,15 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.9.3] - 2026-08-27
+
+### 🐛 Corrections de bugs
+
+- Correction : le package source téléchargé (Téléchargements) est désormais réellement connecté au provisioning (hostname et token du provisioning embarqués directement, plus de secret de tenant à ressaisir à la main)
+- Nouvelle commande agent.cli configure --token, pour un agent déjà provisionné côté serveur (aucun appel réseau)
+
+---
+
 ## [1.9.2] - 2026-08-27
 
 ### 🐛 Corrections de bugs
