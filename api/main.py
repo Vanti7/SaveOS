@@ -7,6 +7,8 @@ Licensed under GNU Affero General Public License v3.0 (AGPL-3.0)
 See LICENSE file for details.
 """
 import os
+import urllib.request
+import urllib.error
 from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -459,6 +461,23 @@ _VERSION_FILE = Path(__file__).resolve().parent.parent / 'VERSION'
 def _get_current_version() -> str:
     return _VERSION_FILE.read_text(encoding='utf-8').strip()
 
+def _release_asset_exists(url: str) -> bool:
+    """Vérifie qu'un asset GitHub Release existe réellement avant d'y
+    rediriger — sans ça, GitHub renvoie un 404 opaque à l'utilisateur final
+    (aucune release n'a jamais été publiée sur ce dépôt à ce jour, le job CI
+    qui construit les installeurs ne s'est jamais exécuté, voir
+    docs/adr/0002-packaging-agents.md)."""
+    try:
+        request = urllib.request.Request(url, method='HEAD')
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.status == 200
+    except urllib.error.HTTPError:
+        return False
+    except urllib.error.URLError:
+        # Réseau indisponible depuis l'API : ne bloque pas l'utilisateur
+        # pour une raison indépendante de l'existence réelle de la release.
+        return True
+
 @app.get("/download/agent/{platform}/installer")
 async def download_agent_installer(platform: str):
     """Redirige vers l'installeur natif (exe/dmg/deb) de la version
@@ -475,11 +494,18 @@ async def download_agent_installer(platform: str):
     version = _get_current_version()
     repo = os.getenv('GITHUB_REPO', 'Vanti7/SaveOS')
     asset_name = _INSTALLER_ASSET_TEMPLATES[platform].format(version=version)
+    url = f"https://github.com/{repo}/releases/download/v{version}/{asset_name}"
 
-    return RedirectResponse(
-        url=f"https://github.com/{repo}/releases/download/v{version}/{asset_name}",
-        status_code=status.HTTP_302_FOUND,
-    )
+    if not _release_asset_exists(url):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Aucun installeur natif publié pour la version {version} ({platform}). "
+                f"Voir https://github.com/{repo}/releases, ou utilisez le package source en attendant."
+            )
+        )
+
+    return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
 
 @app.post("/api/v1/agents/provision")
 async def provision_agent(
