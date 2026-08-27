@@ -22,7 +22,7 @@ from api.database import get_db, create_tables, Agent, Job, Snapshot, Tenant, Us
 from api.schemas import (
     AgentRegister, AgentResponse, AgentHeartbeat, AgentStats,
     JobCreate, JobResponse, JobType, SnapshotResponse,
-    TenantCreate, TenantResponse, TenantCreateResponse,
+    TenantCreate, TenantResponse, TenantCreateResponse, TenantUpdate, TenantUsageResponse,
     UserCreate, UserResponse, LoginRequest, TokenResponse
 )
 from api.auth import (
@@ -206,6 +206,19 @@ async def get_agent_stats(
 
 # === ENDPOINTS JOBS ===
 
+def compute_tenant_consumed_bytes(db: Session, tenant_id: int) -> int:
+    """Espace consommé par un tenant : somme de Snapshot.size_bytes pour tous
+    ses agents. Réutilisée par create_backup_job (vérification de quota) et
+    l'endpoint d'usage GET /api/v1/tenants/{tenant_id} — voir
+    docs/adr/0006-facturation-quotas.md."""
+    return (
+        db.query(func.coalesce(func.sum(Snapshot.size_bytes), 0))
+        .join(Job, Snapshot.job_id == Job.id)
+        .join(Agent, Job.agent_id == Agent.id)
+        .filter(Agent.tenant_id == tenant_id)
+        .scalar()
+    )
+
 @app.post(f"{API_PREFIX}/backup", response_model=JobResponse)
 async def create_backup_job(
     job_data: JobCreate,
@@ -213,7 +226,7 @@ async def create_backup_job(
     db: Session = Depends(get_db)
 ):
     """Lance un job de sauvegarde"""
-    
+
     # Vérifier que l'agent demande un job pour lui-même
     if job_data.agent_id != current_agent.id:
         raise HTTPException(
@@ -227,13 +240,7 @@ async def create_backup_job(
     # docs/adr/0004-multi-tenancy-avancee.md. Ne s'applique qu'aux backups.
     if job_data.type == JobType.BACKUP:
         tenant = db.query(Tenant).filter(Tenant.id == current_agent.tenant_id).first()
-        consumed_bytes = (
-            db.query(func.coalesce(func.sum(Snapshot.size_bytes), 0))
-            .join(Job, Snapshot.job_id == Job.id)
-            .join(Agent, Job.agent_id == Agent.id)
-            .filter(Agent.tenant_id == tenant.id)
-            .scalar()
-        )
+        consumed_bytes = compute_tenant_consumed_bytes(db, tenant.id)
         if consumed_bytes >= tenant.quota_bytes:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -550,6 +557,60 @@ async def list_tenants(
 ):
     """Liste les tenants (sans leur secret d'enregistrement) — réservé au tableau de bord."""
     return db.query(Tenant).order_by(Tenant.created_at.desc()).all()
+
+@app.get(f"{API_PREFIX}/tenants/{{tenant_id}}", response_model=TenantUsageResponse)
+async def get_tenant_usage(
+    tenant_id: int,
+    principal: Principal = Depends(get_current_principal),
+    db: Session = Depends(get_db)
+):
+    """Détail d'un tenant avec sa consommation de quota et un coût estimé
+    (grille tarifaire simple, aucune facturation réelle — voir
+    docs/adr/0006-facturation-quotas.md). Le token dashboard peut consulter
+    n'importe quel tenant ; un utilisateur connecté, uniquement le sien."""
+
+    tenant_id = resolve_scoped_tenant_id(principal, tenant_id)
+
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant introuvable")
+
+    used_bytes = compute_tenant_consumed_bytes(db, tenant.id)
+    price_per_gb = float(os.getenv('BILLING_PRICE_PER_GB', '0.02'))
+
+    return TenantUsageResponse(
+        id=tenant.id,
+        name=tenant.name,
+        quota_bytes=tenant.quota_bytes,
+        retention_policy=tenant.retention_policy,
+        created_at=tenant.created_at,
+        used_bytes=used_bytes,
+        quota_percent=(used_bytes / tenant.quota_bytes * 100) if tenant.quota_bytes else 0.0,
+        estimated_cost=(used_bytes / 1_000_000_000) * price_per_gb
+    )
+
+@app.patch(f"{API_PREFIX}/tenants/{{tenant_id}}", response_model=TenantResponse)
+async def update_tenant(
+    tenant_id: int,
+    tenant_data: TenantUpdate,
+    _: None = Depends(require_dashboard),
+    db: Session = Depends(get_db)
+):
+    """Ajuste le quota et/ou la politique de rétention d'un tenant — réservé
+    au tableau de bord, même périmètre que la gestion des tenants."""
+
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant introuvable")
+
+    if tenant_data.quota_bytes is not None:
+        tenant.quota_bytes = tenant_data.quota_bytes
+    if tenant_data.retention_policy is not None:
+        tenant.retention_policy = json.dumps(tenant_data.retention_policy)
+
+    db.commit()
+    db.refresh(tenant)
+    return tenant
 
 @app.post(f"{API_PREFIX}/auth/login", response_model=TokenResponse)
 async def login(login_data: LoginRequest, db: Session = Depends(get_db)):

@@ -17,7 +17,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from prometheus_client import Counter, Histogram, CollectorRegistry, multiprocess, make_wsgi_app
 
-from api.database import Job, Snapshot, Agent
+from api.database import Job, Snapshot, Agent, Tenant
 
 # Configuration Redis et base de données
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -143,6 +143,39 @@ class BorgManager:
                 'error': str(e)
             }
     
+    def prune(self, retention: Dict[str, int]) -> Dict[str, Any]:
+        """Purge les anciennes archives selon une politique de rétention
+        (clés reconnues : daily/weekly/monthly, voir Tenant.retention_policy
+        et docs/adr/0006-facturation-quotas.md). N'appelle borg que pour les
+        clés effectivement présentes dans retention."""
+        flag_by_key = {'daily': '--keep-daily', 'weekly': '--keep-weekly', 'monthly': '--keep-monthly'}
+        try:
+            cmd = ['borg', 'prune', '--list']
+            for key, flag in flag_by_key.items():
+                if key in retention:
+                    cmd += [flag, str(retention[key])]
+            cmd.append(self.repo_path)
+
+            result = subprocess.run(
+                cmd,
+                env=self.env,
+                capture_output=True,
+                text=True,
+                check=False
+            )
+
+            return {
+                'success': result.returncode == 0,
+                'stdout': result.stdout,
+                'stderr': result.stderr,
+                'returncode': result.returncode
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
     def list_archive_contents(self, archive_name: str) -> Dict[str, Any]:
         """Liste le contenu (fichiers/dossiers) d'une archive Borg"""
         try:
@@ -255,6 +288,38 @@ class BorgManager:
         except:
             return 0
 
+
+def _reconcile_pruned_snapshots(db, borg: 'BorgManager', repo_path: str) -> None:
+    """Après un borg prune réussi, aligne la base sur les archives réellement
+    restantes : supprime les Snapshot dont l'archive a été purgée (met
+    d'abord à NULL tout Job.snapshot_id qui y référence — colonne utilisée
+    à la fois pour le snapshot produit par un backup et pour le snapshot
+    source d'une restauration, contrainte FK sur snapshots.id).
+
+    Garde-fou : une liste d'archives vide n'entraîne aucune suppression
+    (évite un effacement en masse en cas d'anomalie de parsing côté Borg)."""
+    list_result = borg.list_archives()
+    if not list_result.get('success'):
+        return
+
+    current_names = {a['name'] for a in list_result['archives']}
+    if not current_names:
+        return
+
+    stale_snapshots = db.query(Snapshot).filter(
+        Snapshot.repo_path == repo_path,
+        ~Snapshot.name.in_(current_names)
+    ).all()
+
+    if not stale_snapshots:
+        return
+
+    for snapshot in stale_snapshots:
+        db.query(Job).filter(Job.snapshot_id == snapshot.id).update({'snapshot_id': None})
+        db.delete(snapshot)
+    db.commit()
+
+
 def process_backup_job(job_id: int) -> Dict[str, Any]:
     """Traite un job de sauvegarde"""
     
@@ -342,7 +407,21 @@ def process_backup_job(job_id: int) -> Dict[str, Any]:
             
             db.commit()
             db.refresh(snapshot)
-            
+
+            # Purge des anciens snapshots selon la politique de rétention du
+            # tenant (voir docs/adr/0006-facturation-quotas.md). Ne doit
+            # jamais faire échouer un backup déjà réussi : erreurs ignorées.
+            try:
+                tenant = db.query(Tenant).filter(Tenant.id == agent.tenant_id).first()
+                retention = json.loads(tenant.retention_policy) if tenant and tenant.retention_policy else {}
+                recognized_retention = {k: v for k, v in retention.items() if k in ('daily', 'weekly', 'monthly')}
+                if recognized_retention:
+                    prune_result = borg.prune(recognized_retention)
+                    if prune_result.get('success'):
+                        _reconcile_pruned_snapshots(db, borg, repo_path)
+            except Exception:
+                pass
+
             result['success'] = True
             result['message'] = f"Sauvegarde réussie: {archive_name}"
             result['snapshot_id'] = snapshot.id

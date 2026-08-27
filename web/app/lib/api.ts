@@ -88,6 +88,12 @@ export interface TenantCreateResponse extends Tenant {
   registration_secret: string // en clair, une seule fois
 }
 
+export interface TenantUsage extends Tenant {
+  used_bytes: number
+  quota_percent: number
+  estimated_cost: number
+}
+
 export interface User {
   id: number
   email: string
@@ -165,6 +171,13 @@ export const api = {
       ...(quotaBytes !== undefined ? { quota_bytes: quotaBytes } : {}),
       ...(retentionPolicy !== undefined ? { retention_policy: retentionPolicy } : {}),
     })
+    return response.data
+  },
+
+  // Consommation de quota d'un tenant + coût estimé (voir
+  // docs/adr/0006-facturation-quotas.md)
+  async getTenantUsage(tenantId: number): Promise<TenantUsage> {
+    const response = await dashboardClient.get(`/api/tenants/${tenantId}`)
     return response.data
   },
 
