@@ -91,9 +91,31 @@ class AgentResponse(BaseModel):
     status: AgentStatus
     last_seen: datetime
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
+
+class AgentPublic(BaseModel):
+    """Comme AgentResponse mais sans le token (même haché, il n'a rien à
+    faire dans une réponse de listing/détail — seul AgentResponse doit
+    l'exposer, pour la remise en clair unique à l'enregistrement)."""
+    id: int
+    hostname: str
+    platform: str
+    status: AgentStatus
+    last_seen: datetime
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AgentDetailResponse(AgentPublic):
+    total_snapshots: int
+    total_size_bytes: int
+    last_backup: Optional[datetime]
+
+class AgentUpdate(BaseModel):
+    hostname: Optional[str] = None
 
 # Schémas pour les jobs
 class JobCreate(BaseModel):

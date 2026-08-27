@@ -7,10 +7,16 @@ import { formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 import { useTenant } from '../components/TenantProvider'
+import AgentDetailModal from '../components/AgentDetailModal'
+import AgentConfigureModal from '../components/AgentConfigureModal'
+import DeleteAgentModal from '../components/DeleteAgentModal'
+
+type ActiveModal = { type: 'details' | 'configure' | 'delete'; agent: Agent } | null
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeModal, setActiveModal] = useState<ActiveModal>(null)
   const { selectedTenantId } = useTenant()
 
   useEffect(() => {
@@ -211,13 +217,22 @@ export default function AgentsPage() {
                     })}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button className="text-primary-600 hover:text-primary-900 mr-3">
+                    <button
+                      onClick={() => setActiveModal({ type: 'details', agent })}
+                      className="text-primary-600 hover:text-primary-900 mr-3"
+                    >
                       Détails
                     </button>
-                    <button className="text-warning-600 hover:text-warning-900 mr-3">
+                    <button
+                      onClick={() => setActiveModal({ type: 'configure', agent })}
+                      className="text-warning-600 hover:text-warning-900 mr-3"
+                    >
                       Configurer
                     </button>
-                    <button className="text-error-600 hover:text-error-900">
+                    <button
+                      onClick={() => setActiveModal({ type: 'delete', agent })}
+                      className="text-error-600 hover:text-error-900"
+                    >
                       Supprimer
                     </button>
                   </td>
@@ -244,6 +259,24 @@ export default function AgentsPage() {
           </div>
         )}
       </div>
+
+      {activeModal?.type === 'details' && (
+        <AgentDetailModal agent={activeModal.agent} onClose={() => setActiveModal(null)} />
+      )}
+      {activeModal?.type === 'configure' && (
+        <AgentConfigureModal
+          agent={activeModal.agent}
+          onClose={() => setActiveModal(null)}
+          onSaved={(updated) => setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))}
+        />
+      )}
+      {activeModal?.type === 'delete' && (
+        <DeleteAgentModal
+          agent={activeModal.agent}
+          onClose={() => setActiveModal(null)}
+          onDeleted={(agentId) => setAgents((prev) => prev.filter((a) => a.id !== agentId))}
+        />
+      )}
     </div>
   )
 }

@@ -42,6 +42,12 @@ export interface Agent {
   created_at: string
 }
 
+export interface AgentDetail extends Agent {
+  total_snapshots: number
+  total_size_bytes: number
+  last_backup: string | null
+}
+
 export interface Job {
   id: number
   agent_id: number
@@ -132,6 +138,20 @@ export const api = {
       params: tenantId ? { tenant_id: tenantId } : {},
     })
     return response.data
+  },
+
+  async getAgentDetail(agentId: number): Promise<AgentDetail> {
+    const response = await dashboardClient.get(`/api/agents/${agentId}`)
+    return response.data
+  },
+
+  async updateAgent(agentId: number, updates: { hostname?: string }): Promise<Agent> {
+    const response = await dashboardClient.patch(`/api/agents/${agentId}`, updates)
+    return response.data
+  },
+
+  async deleteAgent(agentId: number): Promise<void> {
+    await dashboardClient.delete(`/api/agents/${agentId}`)
   },
 
   // Jobs
