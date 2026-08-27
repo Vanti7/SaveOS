@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import fileDownload from 'js-file-download'
 import { api } from '../lib/api'
 import { useTenant } from '../components/TenantProvider'
+import { useSession } from '../components/SessionProvider'
 
 interface PlatformInfo {
   id: string
@@ -65,9 +66,17 @@ export default function DownloadsPage() {
   const [downloading, setDownloading] = useState<string>('')
   const [configData, setConfigData] = useState<any>(null)
   const { selectedTenantId } = useTenant()
+  const { user } = useSession()
+  // Un utilisateur connecté (admin/user) est toujours limité à son propre
+  // tenant (voir docs/adr/0005-gestion-utilisateurs-roles.md) — le
+  // sélecteur de la barre latérale ne s'affiche plus pour lui (il n'a
+  // qu'un seul tenant), donc son tenant vient de sa session, pas du
+  // sélecteur (pertinent seulement pour une session au token dashboard
+  // statique, jamais utilisée depuis /login).
+  const effectiveTenantId = user?.tenant_id ?? selectedTenantId
 
   const generateAgentPackage = async (platform: string) => {
-    if (selectedTenantId === null) {
+    if (effectiveTenantId === null || effectiveTenantId === undefined) {
       toast.error('Sélectionnez un tenant avant de provisionner un agent')
       return
     }
@@ -81,7 +90,7 @@ export default function DownloadsPage() {
       // Provisionner l'agent sur le serveur, puis télécharger le package
       // source pré-configuré (voir web/app/lib/api.ts pour l'installeur
       // natif exe/dmg/deb, qui ne nécessite pas ce provisioning).
-      const provisionData = await api.provisionAgent(hostname, platform, selectedTenantId)
+      const provisionData = await api.provisionAgent(hostname, platform, effectiveTenantId)
       setConfigData(provisionData)
 
       // Secret d'enregistrement du tenant, nécessaire à l'auto-enregistrement

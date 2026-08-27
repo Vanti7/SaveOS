@@ -42,6 +42,31 @@ class TenantResponse(BaseModel):
 class TenantCreateResponse(TenantResponse):
     registration_secret: str  # en clair, une seule fois (comme AgentResponse.token)
 
+# Schémas pour les utilisateurs et l'authentification
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    role: str = "user"  # admin, user
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    role: str
+    tenant_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
 # Schémas pour l'enregistrement d'agent
 class AgentRegister(BaseModel):
     hostname: str

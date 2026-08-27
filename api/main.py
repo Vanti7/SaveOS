@@ -18,13 +18,17 @@ from datetime import datetime
 import json
 from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
 
-from api.database import get_db, create_tables, Agent, Job, Snapshot, Tenant
+from api.database import get_db, create_tables, Agent, Job, Snapshot, Tenant, User
 from api.schemas import (
     AgentRegister, AgentResponse, AgentHeartbeat, AgentStats,
     JobCreate, JobResponse, JobType, SnapshotResponse,
-    TenantCreate, TenantResponse, TenantCreateResponse
+    TenantCreate, TenantResponse, TenantCreateResponse,
+    UserCreate, UserResponse, LoginRequest, TokenResponse
 )
-from api.auth import AuthManager, get_current_agent, get_current_principal, require_dashboard, Principal
+from api.auth import (
+    AuthManager, get_current_agent, get_current_principal, require_dashboard,
+    require_admin_or_dashboard, resolve_scoped_tenant_id, Principal
+)
 from api.routers.restore import router as restore_router
 from worker.tasks import enqueue_backup_job
 
@@ -322,48 +326,63 @@ async def get_job_status(
 
 # === ENDPOINTS TABLEAU DE BORD (liste-tout, réservés au dashboard) ===
 
+def _require_dashboard_or_user(principal: Principal) -> None:
+    """Un agent ne peut pas appeler les endpoints liste-tout (restriction
+    inchangée) ; token dashboard statique ou utilisateur connecté, oui."""
+    if principal.agent is not None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Réservé au tableau de bord")
+
 @app.get(f"{API_PREFIX}/agents", response_model=List[AgentResponse])
 async def list_all_agents(
     tenant_id: Optional[int] = None,
-    _: None = Depends(require_dashboard),
+    principal: Principal = Depends(get_current_principal),
     db: Session = Depends(get_db)
 ):
-    """Liste les agents (tableau de bord uniquement), tous tenants confondus
-    si tenant_id est omis (vue super-admin), sinon filtrés par tenant."""
+    """Liste les agents (tableau de bord ou utilisateur connecté), tous
+    tenants confondus si tenant_id est omis (token dashboard uniquement),
+    sinon filtrés par tenant (forcé pour un utilisateur connecté)."""
+    _require_dashboard_or_user(principal)
+    effective_tenant_id = resolve_scoped_tenant_id(principal, tenant_id)
     query = db.query(Agent)
-    if tenant_id is not None:
-        query = query.filter(Agent.tenant_id == tenant_id)
+    if effective_tenant_id is not None:
+        query = query.filter(Agent.tenant_id == effective_tenant_id)
     return query.order_by(Agent.created_at.desc()).all()
 
 @app.get(f"{API_PREFIX}/jobs", response_model=List[JobResponse])
 async def list_all_jobs(
     agent_id: Optional[int] = None,
     tenant_id: Optional[int] = None,
-    _: None = Depends(require_dashboard),
+    principal: Principal = Depends(get_current_principal),
     db: Session = Depends(get_db)
 ):
-    """Liste tous les jobs, éventuellement filtrés par agent et/ou tenant (tableau de bord uniquement)"""
+    """Liste tous les jobs, éventuellement filtrés par agent et/ou tenant
+    (tableau de bord ou utilisateur connecté, tenant forcé pour ce dernier)."""
+    _require_dashboard_or_user(principal)
+    effective_tenant_id = resolve_scoped_tenant_id(principal, tenant_id)
     query = db.query(Job)
     if agent_id is not None:
         query = query.filter(Job.agent_id == agent_id)
-    if tenant_id is not None:
-        query = query.join(Agent, Job.agent_id == Agent.id).filter(Agent.tenant_id == tenant_id)
+    if effective_tenant_id is not None:
+        query = query.join(Agent, Job.agent_id == Agent.id).filter(Agent.tenant_id == effective_tenant_id)
     return query.order_by(Job.created_at.desc()).all()
 
 @app.get(f"{API_PREFIX}/snapshots", response_model=List[SnapshotResponse])
 async def list_all_snapshots(
     tenant_id: Optional[int] = None,
-    _: None = Depends(require_dashboard),
+    principal: Principal = Depends(get_current_principal),
     db: Session = Depends(get_db)
 ):
-    """Liste les snapshots (tableau de bord uniquement), tous tenants
-    confondus si tenant_id est omis, sinon filtrés par tenant."""
+    """Liste les snapshots (tableau de bord ou utilisateur connecté), tous
+    tenants confondus si tenant_id est omis (token dashboard uniquement),
+    sinon filtrés par tenant (forcé pour un utilisateur connecté)."""
+    _require_dashboard_or_user(principal)
+    effective_tenant_id = resolve_scoped_tenant_id(principal, tenant_id)
     query = (
         db.query(Snapshot, Job.agent_id)
         .join(Job, Snapshot.job_id == Job.id)
     )
-    if tenant_id is not None:
-        query = query.join(Agent, Job.agent_id == Agent.id).filter(Agent.tenant_id == tenant_id)
+    if effective_tenant_id is not None:
+        query = query.join(Agent, Job.agent_id == Agent.id).filter(Agent.tenant_id == effective_tenant_id)
     rows = query.order_by(Snapshot.created_at.desc()).all()
     return [
         SnapshotResponse(
@@ -448,14 +467,16 @@ async def provision_agent(
     hostname: str,
     platform: str,
     tenant_id: int,
-    _: None = Depends(require_dashboard),
+    principal: Principal = Depends(require_admin_or_dashboard),
     db: Session = Depends(get_db)
 ):
     """Provisionne un nouvel agent avec token pré-généré, pour un tenant
-    explicite. Réservé au tableau de bord (voir
-    docs/adr/0004-multi-tenancy-avancee.md) : émettre un token d'agent
+    explicite. Réservé au tableau de bord ou à un admin de ce tenant (voir
+    docs/adr/0004-multi-tenancy-avancee.md et
+    docs/adr/0005-gestion-utilisateurs-roles.md) : émettre un token d'agent
     valide sans authentification était une faille pré-existante."""
 
+    tenant_id = resolve_scoped_tenant_id(principal, tenant_id)
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant introuvable")
@@ -529,6 +550,87 @@ async def list_tenants(
 ):
     """Liste les tenants (sans leur secret d'enregistrement) — réservé au tableau de bord."""
     return db.query(Tenant).order_by(Tenant.created_at.desc()).all()
+
+@app.post(f"{API_PREFIX}/auth/login", response_model=TokenResponse)
+async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
+    """Authentifie un utilisateur (email/mot de passe) et émet un JWT —
+    voir docs/adr/0005-gestion-utilisateurs-roles.md."""
+
+    user = db.query(User).filter(User.email == login_data.email).first()
+    if not user or not AuthManager.verify_password(login_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email ou mot de passe invalide"
+        )
+
+    token = AuthManager.create_access_token(user)
+    return TokenResponse(access_token=token, user=user)
+
+@app.get(f"{API_PREFIX}/auth/me", response_model=UserResponse)
+async def get_me(principal: Principal = Depends(get_current_principal)):
+    """Informations de l'utilisateur connecté — exige un principal utilisateur
+    (401 pour un agent ou le token dashboard statique)."""
+
+    if principal.user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Réservé à un utilisateur connecté"
+        )
+    return principal.user
+
+@app.post(f"{API_PREFIX}/users", response_model=UserResponse)
+async def create_user(
+    user_data: UserCreate,
+    tenant_id: Optional[int] = None,
+    principal: Principal = Depends(get_current_principal),
+    db: Session = Depends(get_db)
+):
+    """Crée un utilisateur. Le token dashboard statique (bootstrap, avant
+    qu'aucun utilisateur n'existe) doit fournir tenant_id explicitement ;
+    un admin déjà authentifié crée toujours dans son propre tenant."""
+
+    if principal.is_dashboard:
+        if tenant_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="tenant_id requis pour créer un utilisateur via le token dashboard"
+            )
+        effective_tenant_id = tenant_id
+    elif principal.user is not None and principal.user.role == "admin":
+        if tenant_id is not None and tenant_id != principal.user.tenant_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé à votre tenant")
+        effective_tenant_id = principal.user.tenant_id
+    else:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Réservé au tableau de bord ou à un administrateur")
+
+    if db.query(User).filter(User.email == user_data.email).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Un utilisateur avec cet email existe déjà")
+
+    user = User(
+        tenant_id=effective_tenant_id,
+        email=user_data.email,
+        role=user_data.role,
+        password_hash=AuthManager.hash_password(user_data.password)
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+@app.get(f"{API_PREFIX}/users", response_model=List[UserResponse])
+async def list_users(
+    tenant_id: Optional[int] = None,
+    principal: Principal = Depends(require_admin_or_dashboard),
+    db: Session = Depends(get_db)
+):
+    """Liste les utilisateurs — token dashboard : tous tenants ou filtré
+    (tenant_id optionnel) ; admin : toujours limité à son propre tenant."""
+
+    effective_tenant_id = resolve_scoped_tenant_id(principal, tenant_id)
+    query = db.query(User)
+    if effective_tenant_id is not None:
+        query = query.filter(User.tenant_id == effective_tenant_id)
+    return query.order_by(User.created_at.desc()).all()
 
 AGENT_SOURCE_DIR = Path(__file__).resolve().parent.parent / 'agent'
 AGENT_SOURCE_FILES = ['__init__.py', 'cli.py', 'config.py', 'api_client.py', 'service.py']

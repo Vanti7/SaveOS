@@ -6,6 +6,17 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.8.0] - 2026-08-27
+
+### ✨ Nouvelles fonctionnalités
+
+- Connexion utilisateur réelle (email/mot de passe, JWT via python-jose, hachage bcrypt) devient le chemin principal du tableau de bord, session en cookie httpOnly côté serveur
+- Rôles appliqués : admin gère les utilisateurs et provisionne des agents pour son propre tenant uniquement, user a accès en lecture/écriture à son propre tenant
+- Gestion des tenants (création/liste) reste réservée au token dashboard statique (DASHBOARD_API_TOKEN, désormais secret de service/bootstrap uniquement)
+- Correction : passlib remplacé par bcrypt direct (incompatibilité avec la version de bcrypt installée)
+
+---
+
 ## [1.7.0] - 2026-08-26
 
 ### ✨ Nouvelles fonctionnalités
@@ -71,12 +82,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - Authentification double agent/tableau de bord (token dashboard)
 - Pages Agents/Jobs/Snapshots du tableau de bord connectées à l'API réelle (fin des données simulées)
 - Correction : sérialisation JSON de Job.config, ambiguïté de clé étrangère Job/Snapshot, kwarg RQ invalide
-
----
-
-
-### Prévu
-- Gestion des utilisateurs et authentification
 
 ---
 

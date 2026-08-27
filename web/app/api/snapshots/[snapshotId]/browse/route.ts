@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { serverApi } from '../../../../lib/serverApi'
 import { proxyErrorResponse } from '../../../../lib/proxyError'
+import { authHeaders } from '../../../../lib/session'
 
 export async function POST(request: NextRequest, { params }: { params: { snapshotId: string } }) {
   const body = await request.json()
@@ -10,6 +11,7 @@ export async function POST(request: NextRequest, { params }: { params: { snapsho
     const response = await serverApi.post(
       `/api/v1/backup/${agent_id}/snapshots/${params.snapshotId}/browse`,
       rest,
+      { headers: authHeaders() },
     )
     return NextResponse.json(response.data)
   } catch (error) {

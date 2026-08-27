@@ -50,3 +50,28 @@ describe('api.provisionAgent', () => {
     )
   })
 })
+
+// login pose le JWT reçu en cookie httpOnly côté serveur (route proxy) —
+// le client n'y accède jamais directement, il passe par la même route
+// proxy relative que les autres appels dashboard. Voir
+// docs/adr/0005-gestion-utilisateurs-roles.md.
+describe('api.login', () => {
+  afterEach(() => {
+    vi.doUnmock('axios')
+    vi.resetModules()
+  })
+
+  it('appelle la route proxy relative /api/auth/login', async () => {
+    const postMock = vi.fn().mockResolvedValue({ data: { user: { id: 1, email: 'a@test.local', role: 'admin', tenant_id: 1, created_at: '' } } })
+    vi.doMock('axios', () => ({
+      default: {
+        create: vi.fn(() => ({ get: vi.fn(), post: postMock, defaults: {} })),
+      },
+    }))
+
+    const { api } = await import('./api')
+    await api.login('a@test.local', 'secret')
+
+    expect(postMock).toHaveBeenCalledWith('/api/auth/login', { email: 'a@test.local', password: 'secret' })
+  })
+})

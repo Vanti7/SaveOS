@@ -63,7 +63,8 @@ Les services sont accessibles aux adresses suivantes :
 
 ### Variables d'environnement notables
 
-- `DASHBOARD_API_TOKEN` : token statique donnant au tableau de bord web un accès complet à l'API (pont d'authentification temporaire MVP — voir [docs/adr/0001-restauration-granulaire-mvp.md](docs/adr/0001-restauration-granulaire-mvp.md)). Même valeur côté `api` et `web`, jamais préfixée par `NEXT_PUBLIC_`.
+- `DASHBOARD_API_TOKEN` : token statique d'exploitation (bootstrap, scripts, CI) donnant un accès complet à l'API — voir [docs/adr/0001-restauration-granulaire-mvp.md](docs/adr/0001-restauration-granulaire-mvp.md). Le tableau de bord web ne l'utilise plus par défaut une fois la connexion en place (voir [docs/adr/0005-gestion-utilisateurs-roles.md](docs/adr/0005-gestion-utilisateurs-roles.md)). Même valeur côté `api` et `web`, jamais préfixée par `NEXT_PUBLIC_`.
+- `JWT_SECRET_KEY` : secret de signature des JWT de session utilisateur (requis côté `api` pour que `/api/v1/auth/login` fonctionne — pas de défaut silencieux).
 - `RESTORE_PACKAGE_DIR` : dossier partagé (`api` + `worker`) où sont stockés les paquets zip générés par une restauration. Défaut : `/tmp/restore_packages`.
 
 ### Agent
@@ -84,9 +85,33 @@ L'agent se configure automatiquement lors de la première utilisation. La config
 4. **Consultez les sauvegardes** : Section "Snapshots"
 5. **Monitoring en temps réel** : Section "Monitoring"
 
+### Connexion et rôles
+
+Le tableau de bord exige désormais une connexion (email/mot de passe, `/login`) — voir [docs/adr/0005-gestion-utilisateurs-roles.md](docs/adr/0005-gestion-utilisateurs-roles.md). Deux rôles :
+
+- **admin** : gère les utilisateurs et provisionne des agents, au sein de son propre tenant (section "Paramètres").
+- **user** : accès en lecture/écriture aux agents/jobs/snapshots de son propre tenant.
+
+`DASHBOARD_API_TOKEN` reste un secret d'exploitation (bootstrap, scripts, CI) — il n'est plus utilisé pour accéder au tableau de bord une fois la connexion en place.
+
 ### Multi-tenancy
 
-Chaque agent appartient à un **tenant** (isolation des agents/jobs/snapshots, quota de stockage — voir [docs/adr/0004-multi-tenancy-avancee.md](docs/adr/0004-multi-tenancy-avancee.md)). Depuis l'interface web (section **"Paramètres"**), créez un tenant : son **secret d'enregistrement** est affiché une seule fois, à transmettre à chaque agent qui doit le rejoindre. Le tableau de bord garde un unique token admin global (`DASHBOARD_API_TOKEN`) mais affiche un sélecteur de tenant (barre latérale) pour filtrer les listes ; "Tous les tenants" reste une vue admin valide.
+Chaque agent appartient à un **tenant** (isolation des agents/jobs/snapshots, quota de stockage — voir [docs/adr/0004-multi-tenancy-avancee.md](docs/adr/0004-multi-tenancy-avancee.md)). La création de tenants reste une opération d'exploitation, via l'API avec `DASHBOARD_API_TOKEN` (pas depuis le tableau de bord) :
+
+```bash
+# 1. Créer un tenant (le secret d'enregistrement n'est affiché qu'ici, une seule fois)
+curl -X POST https://localhost:8000/api/v1/tenants \
+  -H "Authorization: Bearer $DASHBOARD_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name": "acme"}'
+
+# 2. Créer le premier admin de ce tenant (tenant_id = id renvoyé à l'étape 1)
+curl -X POST "https://localhost:8000/api/v1/users?tenant_id=1" \
+  -H "Authorization: Bearer $DASHBOARD_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"email": "admin@acme.example", "password": "...", "role": "admin"}'
+
+# 3. Se connecter sur /login avec ces identifiants — l'admin peut ensuite
+#    créer d'autres utilisateurs de son tenant depuis les Paramètres.
+```
 
 ### Installation d'agents
 
@@ -128,9 +153,13 @@ L'API expose les endpoints suivants :
 - `GET /health` : Santé de l'API
 - `GET /metrics` : Métriques Prometheus
 - `GET /download/agent/{platform}` : Télécharger un agent
-- `POST /api/v1/agents/provision` : Provisionner un agent (tableau de bord uniquement)
+- `POST /api/v1/agents/provision` : Provisionner un agent (tableau de bord ou admin de ce tenant)
 - `POST /api/v1/tenants` : Créer un tenant, retourne son secret d'enregistrement (tableau de bord uniquement)
 - `GET /api/v1/tenants` : Lister les tenants (tableau de bord uniquement)
+- `POST /api/v1/auth/login` : Connexion (email/mot de passe), émet un JWT
+- `GET /api/v1/auth/me` : Informations de l'utilisateur connecté
+- `POST /api/v1/users` : Créer un utilisateur (tableau de bord avec tenant_id, ou admin dans son propre tenant)
+- `GET /api/v1/users` : Lister les utilisateurs (tableau de bord, ou admin limité à son propre tenant)
 
 Documentation interactive disponible sur : https://localhost:8000/docs
 
@@ -239,9 +268,8 @@ Les tables sont créées automatiquement par SQLAlchemy au démarrage de l'API. 
 ## 🚫 Limitations du MVP
 
 - Dashboard Traefik en production sans authentification applicative (voir [docs/adr/0003-certificats-tls-production.md](docs/adr/0003-certificats-tls-production.md))
-- Tableau de bord multi-tenant limité à un unique token admin global (pas de login par tenant — voir [docs/adr/0004-multi-tenancy-avancee.md](docs/adr/0004-multi-tenancy-avancee.md))
+- Gestion des tenants (création/liste) réservée à l'API + `DASHBOARD_API_TOKEN`, pas d'interface web (voir [docs/adr/0005-gestion-utilisateurs-roles.md](docs/adr/0005-gestion-utilisateurs-roles.md))
 - Pas de restauration granulaire via l'interface
-- Authentification simplifiée (pas de gestion utilisateurs)
 - Monitoring limité (pas de Grafana intégré)
 
 ## 🔄 Maintenance
@@ -289,7 +317,7 @@ Pour le support et les questions :
 - [x] Packaging des agents (exe/dmg/deb) ✅
 - [x] Certificats TLS valides ✅
 - [x] Multi-tenancy avancée ✅
-- [ ] Gestion des utilisateurs et rôles
+- [x] Gestion des utilisateurs et rôles ✅
 - [ ] Facturation et quotas
 
 ## 📄 Licence
