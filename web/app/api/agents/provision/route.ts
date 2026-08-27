@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { serverApi } from '../../../lib/serverApi'
 import { proxyErrorResponse } from '../../../lib/proxyError'
+import { authHeaders } from '../../../lib/session'
 
 // hostname/platform/tenant_id sont des query params côté API (pas un body
 // JSON) — voir api/main.py::provision_agent.
@@ -12,6 +13,7 @@ export async function POST(request: NextRequest) {
   try {
     const response = await serverApi.post('/api/v1/agents/provision', null, {
       params: { hostname, platform, tenant_id: tenantId },
+      headers: authHeaders(),
     })
     return NextResponse.json(response.data)
   } catch (error) {

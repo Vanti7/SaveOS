@@ -4,6 +4,7 @@ import './globals.css'
 import { Toaster } from 'react-hot-toast'
 import Sidebar from './components/Sidebar'
 import { TenantProvider } from './components/TenantProvider'
+import { SessionProvider } from './components/SessionProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -20,16 +21,18 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body className={inter.className}>
-        <TenantProvider>
-          <div className="flex h-screen bg-gray-50">
-            <Sidebar />
-            <main className="flex-1 overflow-x-hidden overflow-y-auto">
-              <div className="container mx-auto px-6 py-8">
-                {children}
-              </div>
-            </main>
-          </div>
-        </TenantProvider>
+        <SessionProvider>
+          <TenantProvider>
+            <div className="flex h-screen bg-gray-50">
+              <Sidebar />
+              <main className="flex-1 overflow-x-hidden overflow-y-auto">
+                <div className="container mx-auto px-6 py-8">
+                  {children}
+                </div>
+              </main>
+            </div>
+          </TenantProvider>
+        </SessionProvider>
         <Toaster
           position="top-right"
           toastOptions={{

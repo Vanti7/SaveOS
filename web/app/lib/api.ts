@@ -88,6 +88,14 @@ export interface TenantCreateResponse extends Tenant {
   registration_secret: string // en clair, une seule fois
 }
 
+export interface User {
+  id: number
+  email: string
+  role: 'admin' | 'user'
+  tenant_id: number
+  created_at: string
+}
+
 export type RestoreTarget = 'download' | 'agent'
 
 export interface RestoreJobCreate {
@@ -157,6 +165,32 @@ export const api = {
       ...(quotaBytes !== undefined ? { quota_bytes: quotaBytes } : {}),
       ...(retentionPolicy !== undefined ? { retention_policy: retentionPolicy } : {}),
     })
+    return response.data
+  },
+
+  // Connexion / session (voir docs/adr/0005-gestion-utilisateurs-roles.md)
+  async login(email: string, password: string): Promise<{ user: User }> {
+    const response = await dashboardClient.post('/api/auth/login', { email, password })
+    return response.data
+  },
+
+  async logout(): Promise<void> {
+    await dashboardClient.post('/api/auth/logout')
+  },
+
+  async getCurrentUser(): Promise<User> {
+    const response = await dashboardClient.get('/api/auth/me')
+    return response.data
+  },
+
+  // Utilisateurs (admin uniquement, toujours limité à son propre tenant)
+  async getUsers(): Promise<User[]> {
+    const response = await dashboardClient.get('/api/users')
+    return response.data
+  },
+
+  async createUser(email: string, password: string, role: 'admin' | 'user' = 'user'): Promise<User> {
+    const response = await dashboardClient.post('/api/users', { email, password, role })
     return response.data
   },
 

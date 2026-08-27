@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { serverApi } from '../../lib/serverApi'
 import { proxyErrorResponse } from '../../lib/proxyError'
+import { authHeaders } from '../../lib/session'
 
 export async function GET(request: NextRequest) {
   const agentId = request.nextUrl.searchParams.get('agent_id')
@@ -12,6 +13,7 @@ export async function GET(request: NextRequest) {
         ...(agentId ? { agent_id: agentId } : {}),
         ...(tenantId ? { tenant_id: tenantId } : {}),
       },
+      headers: authHeaders(),
     })
     return NextResponse.json(response.data)
   } catch (error) {

@@ -5,7 +5,7 @@ import { authHeaders } from '../../lib/session'
 
 export async function GET() {
   try {
-    const response = await serverApi.get('/api/v1/tenants', { headers: authHeaders() })
+    const response = await serverApi.get('/api/v1/users', { headers: authHeaders() })
     return NextResponse.json(response.data)
   } catch (error) {
     return proxyErrorResponse(error)
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
 
   try {
-    const response = await serverApi.post('/api/v1/tenants', body, { headers: authHeaders() })
+    const response = await serverApi.post('/api/v1/users', body, { headers: authHeaders() })
     return NextResponse.json(response.data)
   } catch (error) {
     return proxyErrorResponse(error)

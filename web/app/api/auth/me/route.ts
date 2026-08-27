@@ -3,9 +3,9 @@ import { serverApi } from '../../../lib/serverApi'
 import { proxyErrorResponse } from '../../../lib/proxyError'
 import { authHeaders } from '../../../lib/session'
 
-export async function GET(_request: Request, { params }: { params: { jobId: string } }) {
+export async function GET() {
   try {
-    const response = await serverApi.get(`/api/v1/jobs/${params.jobId}`, { headers: authHeaders() })
+    const response = await serverApi.get('/api/v1/auth/me', { headers: authHeaders() })
     return NextResponse.json(response.data)
   } catch (error) {
     return proxyErrorResponse(error)
