@@ -1,78 +1,101 @@
 'use client'
 
-import { useState } from 'react'
-import { SettingsIcon, SaveIcon, RefreshCwIcon, UsersIcon, PlusIcon, CopyIcon, CheckIcon } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { SettingsIcon, SaveIcon, RefreshCwIcon, UserIcon, PlusIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { api } from '../lib/api'
-import { useTenant } from '../components/TenantProvider'
+import { api, User } from '../lib/api'
+import { useSession } from '../components/SessionProvider'
 
-function TenantsCard() {
-  const { tenants, refreshTenants, loading } = useTenant()
-  const [newTenantName, setNewTenantName] = useState('')
+// La gestion des tenants (création/liste) a été retirée du tableau de bord
+// avec l'arrivée de la connexion (voir docs/adr/0005-gestion-utilisateurs-
+// roles.md, décision 4) : POST/GET /api/v1/tenants restent réservés au
+// token dashboard statique, jamais accessible depuis une session /login,
+// quel que soit le rôle — la carte affichée ici échouerait systématiquement
+// pour tout utilisateur réel. Créer un tenant reste possible via l'API
+// (DASHBOARD_API_TOKEN), voir la section "Multi-tenancy" du README.
+
+function UsersCard() {
+  const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newEmail, setNewEmail] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newRole, setNewRole] = useState<'admin' | 'user'>('user')
   const [creating, setCreating] = useState(false)
-  const [newSecret, setNewSecret] = useState<{ name: string; secret: string } | null>(null)
-  const [copied, setCopied] = useState(false)
 
-  const handleCreate = async () => {
-    if (!newTenantName.trim()) return
+  const refreshUsers = async () => {
     try {
-      setCreating(true)
-      const tenant = await api.createTenant(newTenantName.trim())
-      setNewSecret({ name: tenant.name, secret: tenant.registration_secret })
-      setNewTenantName('')
-      await refreshTenants()
-      toast.success(`Tenant "${tenant.name}" créé`)
+      const data = await api.getUsers()
+      setUsers(data)
     } catch (error) {
-      toast.error('Erreur lors de la création du tenant')
+      console.error('Erreur lors du chargement des utilisateurs:', error)
     } finally {
-      setCreating(false)
+      setLoading(false)
     }
   }
 
-  const copySecret = async () => {
-    if (!newSecret) return
+  useEffect(() => {
+    refreshUsers()
+  }, [])
+
+  const handleCreate = async () => {
+    if (!newEmail.trim() || !newPassword) return
     try {
-      await navigator.clipboard.writeText(newSecret.secret)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      setCreating(true)
+      await api.createUser(newEmail.trim(), newPassword, newRole)
+      setNewEmail('')
+      setNewPassword('')
+      setNewRole('user')
+      await refreshUsers()
+      toast.success(`Utilisateur "${newEmail}" créé`)
     } catch (error) {
-      toast.error('Erreur lors de la copie')
+      toast.error("Erreur lors de la création de l'utilisateur")
+    } finally {
+      setCreating(false)
     }
   }
 
   return (
     <div className="card mt-8">
       <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
-        <UsersIcon className="w-5 h-5 mr-2" />
-        Tenants
+        <UserIcon className="w-5 h-5 mr-2" />
+        Utilisateurs
       </h2>
-
-      {newSecret && (
-        <div className="mb-6 p-4 bg-primary-50 rounded-lg">
-          <p className="text-sm font-medium text-primary-900 mb-2">
-            Secret d'enregistrement de "{newSecret.name}" — affiché une seule fois, à transmettre aux agents de ce tenant :
-          </p>
-          <div className="flex items-center justify-between bg-white rounded-lg p-3">
-            <code className="text-xs text-gray-800 flex-1 mr-2 break-all">{newSecret.secret}</code>
-            <button onClick={copySecret} className="text-gray-500 hover:text-gray-700 flex-shrink-0">
-              {copied ? <CheckIcon className="w-4 h-4 text-green-500" /> : <CopyIcon className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="flex items-end space-x-3 mb-6">
         <div className="flex-1">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Nouveau tenant</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
           <input
-            type="text"
+            type="email"
             className="input-field"
-            placeholder="Nom du tenant"
-            value={newTenantName}
-            onChange={(e) => setNewTenantName(e.target.value)}
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
           />
         </div>
-        <button onClick={handleCreate} disabled={creating || !newTenantName.trim()} className="btn-primary flex items-center">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Mot de passe</label>
+          <input
+            type="password"
+            className="input-field"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Rôle</label>
+          <select
+            className="input-field"
+            value={newRole}
+            onChange={(e) => setNewRole(e.target.value as 'admin' | 'user')}
+          >
+            <option value="user">Utilisateur</option>
+            <option value="admin">Administrateur</option>
+          </select>
+        </div>
+        <button
+          onClick={handleCreate}
+          disabled={creating || !newEmail.trim() || !newPassword}
+          className="btn-primary flex items-center"
+        >
           <PlusIcon className="w-4 h-4 mr-2" />
           Créer
         </button>
@@ -80,23 +103,23 @@ function TenantsCard() {
 
       {loading ? (
         <p className="text-sm text-gray-500">Chargement...</p>
-      ) : tenants.length === 0 ? (
-        <p className="text-sm text-gray-500">Aucun tenant pour l'instant.</p>
+      ) : users.length === 0 ? (
+        <p className="text-sm text-gray-500">Aucun utilisateur pour l'instant.</p>
       ) : (
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-gray-500 border-b border-gray-200">
-              <th className="pb-2">Nom</th>
-              <th className="pb-2">Quota</th>
+              <th className="pb-2">Email</th>
+              <th className="pb-2">Rôle</th>
               <th className="pb-2">Créé le</th>
             </tr>
           </thead>
           <tbody>
-            {tenants.map((tenant) => (
-              <tr key={tenant.id} className="border-b border-gray-100">
-                <td className="py-2">{tenant.name}</td>
-                <td className="py-2">{(tenant.quota_bytes / 1e9).toFixed(1)} GB</td>
-                <td className="py-2">{new Date(tenant.created_at).toLocaleDateString('fr-FR')}</td>
+            {users.map((u) => (
+              <tr key={u.id} className="border-b border-gray-100">
+                <td className="py-2">{u.email}</td>
+                <td className="py-2">{u.role === 'admin' ? 'Administrateur' : 'Utilisateur'}</td>
+                <td className="py-2">{new Date(u.created_at).toLocaleDateString('fr-FR')}</td>
               </tr>
             ))}
           </tbody>
@@ -107,6 +130,7 @@ function TenantsCard() {
 }
 
 export default function SettingsPage() {
+  const { user } = useSession()
   const [settings, setSettings] = useState({
     serverName: 'SaveOS Server',
     maxAgents: 100,
@@ -287,7 +311,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <TenantsCard />
+      {user?.role === 'admin' && <UsersCard />}
 
       {/* Informations système */}
       <div className="card mt-8">
