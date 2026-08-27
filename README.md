@@ -66,6 +66,7 @@ Les services sont accessibles aux adresses suivantes :
 - `DASHBOARD_API_TOKEN` : token statique d'exploitation (bootstrap, scripts, CI) donnant un accès complet à l'API — voir [docs/adr/0001-restauration-granulaire-mvp.md](docs/adr/0001-restauration-granulaire-mvp.md). Le tableau de bord web ne l'utilise plus par défaut une fois la connexion en place (voir [docs/adr/0005-gestion-utilisateurs-roles.md](docs/adr/0005-gestion-utilisateurs-roles.md)). Même valeur côté `api` et `web`, jamais préfixée par `NEXT_PUBLIC_`.
 - `JWT_SECRET_KEY` : secret de signature des JWT de session utilisateur (requis côté `api` pour que `/api/v1/auth/login` fonctionne — pas de défaut silencieux).
 - `RESTORE_PACKAGE_DIR` : dossier partagé (`api` + `worker`) où sont stockés les paquets zip générés par une restauration. Défaut : `/tmp/restore_packages`.
+- `BILLING_PRICE_PER_GB` : prix estimé par Go consommé, utilisé uniquement pour l'affichage d'un coût indicatif (`estimated_cost`) — aucune facturation réelle. Défaut : `0.02`.
 
 ### Agent
 
@@ -113,6 +114,14 @@ curl -X POST "https://localhost:8000/api/v1/users?tenant_id=1" \
 #    créer d'autres utilisateurs de son tenant depuis les Paramètres.
 ```
 
+**Quotas et rétention** (voir [docs/adr/0006-facturation-quotas.md](docs/adr/0006-facturation-quotas.md)) : la consommation réelle et un coût estimé sont visibles sur la page d'accueil du tableau de bord (`GET /api/v1/tenants/{tenant_id}`), un nouveau job de sauvegarde est bloqué au-delà du quota. `Tenant.retention_policy` (`{"daily": N, "weekly": N, "monthly": N}`) est appliqué automatiquement après chaque sauvegarde réussie (purge Borg des anciennes archives). Ajuster le quota ou la politique de rétention après création :
+
+```bash
+curl -X PATCH https://localhost:8000/api/v1/tenants/1 \
+  -H "Authorization: Bearer $DASHBOARD_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"quota_bytes": 50000000000, "retention_policy": {"daily": 14, "weekly": 8}}'
+```
+
 ### Installation d'agents
 
 Deux options depuis l'interface web (section **"Téléchargements"**), pour chaque plateforme (Windows/macOS/Linux) — un tenant doit être sélectionné au préalable :
@@ -156,6 +165,8 @@ L'API expose les endpoints suivants :
 - `POST /api/v1/agents/provision` : Provisionner un agent (tableau de bord ou admin de ce tenant)
 - `POST /api/v1/tenants` : Créer un tenant, retourne son secret d'enregistrement (tableau de bord uniquement)
 - `GET /api/v1/tenants` : Lister les tenants (tableau de bord uniquement)
+- `GET /api/v1/tenants/{tenant_id}` : Détail d'un tenant avec consommation de quota et coût estimé (tableau de bord, ou utilisateur pour son propre tenant)
+- `PATCH /api/v1/tenants/{tenant_id}` : Ajuster le quota/la politique de rétention d'un tenant (tableau de bord uniquement)
 - `POST /api/v1/auth/login` : Connexion (email/mot de passe), émet un JWT
 - `GET /api/v1/auth/me` : Informations de l'utilisateur connecté
 - `POST /api/v1/users` : Créer un utilisateur (tableau de bord avec tenant_id, ou admin dans son propre tenant)
@@ -318,7 +329,7 @@ Pour le support et les questions :
 - [x] Certificats TLS valides ✅
 - [x] Multi-tenancy avancée ✅
 - [x] Gestion des utilisateurs et rôles ✅
-- [ ] Facturation et quotas
+- [x] Facturation et quotas ✅
 
 ## 📄 Licence
 
