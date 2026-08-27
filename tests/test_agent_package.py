@@ -100,3 +100,48 @@ def test_generate_agent_package_registration_secret_empty_by_default():
     with tarfile.open(fileobj=io.BytesIO(package), mode='r:gz') as tf:
         config = json.loads(tf.extractfile('config.json').read())
         assert config['registration_secret'] == ''
+
+
+# --- Provisioning -> téléchargement (voir docs/adr/0007-provisioning-package-source.md) ---
+
+def test_generate_agent_package_uses_real_hostname_when_provided():
+    package = generate_agent_package('linux', hostname='my-real-machine')
+
+    with tarfile.open(fileobj=io.BytesIO(package), mode='r:gz') as tf:
+        config = json.loads(tf.extractfile('config.json').read())
+        assert config['hostname'] == 'my-real-machine'
+
+
+def test_generate_agent_package_hostname_falls_back_to_placeholder():
+    package = generate_agent_package('linux')
+
+    with tarfile.open(fileobj=io.BytesIO(package), mode='r:gz') as tf:
+        config = json.loads(tf.extractfile('config.json').read())
+        assert config['hostname'] == 'linux-agent'
+
+
+def test_generate_agent_package_with_token_uses_configure_not_register():
+    package = generate_agent_package('linux', hostname='h', token='provisioned-tok')
+
+    with tarfile.open(fileobj=io.BytesIO(package), mode='r:gz') as tf:
+        install_sh = tf.extractfile('install.sh').read().decode()
+        assert 'agent.cli configure --token "provisioned-tok"' in install_sh
+        assert 'agent.cli register' not in install_sh
+
+
+def test_generate_agent_package_windows_with_token_uses_configure():
+    package = generate_agent_package('windows', hostname='h', token='provisioned-tok')
+
+    with zipfile.ZipFile(io.BytesIO(package)) as zf:
+        install_bat = zf.read('install.bat').decode()
+        assert 'agent.cli configure --token "provisioned-tok"' in install_bat
+        assert 'agent.cli register' not in install_bat
+
+
+def test_generate_agent_package_without_token_still_uses_register():
+    package = generate_agent_package('linux', registration_secret='tenant-secret')
+
+    with tarfile.open(fileobj=io.BytesIO(package), mode='r:gz') as tf:
+        install_sh = tf.extractfile('install.sh').read().decode()
+        assert 'agent.cli register' in install_sh
+        assert 'configure --token' not in install_sh
