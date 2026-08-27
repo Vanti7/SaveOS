@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
-from api.database import Base, get_db, Tenant, Agent
+from api.database import Base, get_db, Tenant, Agent, User
 from api.main import app
 from api.auth import AuthManager
 
@@ -67,3 +67,37 @@ def test_agent(db_session):
     db_session.commit()
     db_session.refresh(agent)
     return agent, token
+
+
+def _make_user(db_session, role, email, password="test-password"):
+    """Crée un tenant + un utilisateur de test et retourne (user, mot de passe en clair)."""
+    tenant = Tenant(
+        name=f"tenant-for-{email}",
+        registration_secret_hash=AuthManager.hash_token(f"secret-for-{email}"),
+    )
+    db_session.add(tenant)
+    db_session.commit()
+    db_session.refresh(tenant)
+
+    user = User(
+        tenant_id=tenant.id,
+        email=email,
+        role=role,
+        password_hash=AuthManager.hash_password(password),
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user, password
+
+
+@pytest.fixture()
+def test_admin(db_session):
+    """Crée un tenant + un utilisateur admin de test et retourne (user, mot de passe en clair)."""
+    return _make_user(db_session, "admin", "admin@test.local")
+
+
+@pytest.fixture()
+def test_user(db_session):
+    """Crée un tenant + un utilisateur (rôle user) de test et retourne (user, mot de passe en clair)."""
+    return _make_user(db_session, "user", "user@test.local")
