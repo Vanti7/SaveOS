@@ -6,6 +6,16 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.9.0] - 2026-08-27
+
+### ✨ Nouvelles fonctionnalités
+
+- Purge automatique des anciens snapshots selon la politique de rétention du tenant (daily/weekly/monthly), appliquée après chaque sauvegarde réussie
+- Endpoint d'usage de quota par tenant (consommation réelle, pourcentage, coût estimé) et ajustement du quota/rétention après création
+- Page d'accueil du tableau de bord connectée aux vraies données (statistiques, activité récente, actions rapides) au lieu de données simulées, carte d'utilisation du quota
+
+---
+
 ## [1.8.0] - 2026-08-27
 
 ### ✨ Nouvelles fonctionnalités
