@@ -6,6 +6,15 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.9.2] - 2026-08-27
+
+### 🐛 Corrections de bugs
+
+- Correction : VERSION manquant des images Docker (api/prod), l'installeur natif (GET /download/agent/{platform}/installer) plantait systématiquement
+- Correction : TenantProvider appelait GET /api/v1/tenants à chaque navigation pour une session utilisateur, échouant systématiquement (403) puisque réservé au token dashboard statique
+
+---
+
 ## [1.9.1] - 2026-08-27
 
 ### 🐛 Corrections de bugs
