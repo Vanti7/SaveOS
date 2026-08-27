@@ -63,6 +63,9 @@ services:
       # Token statique du tableau de bord (pont d'auth temporaire MVP, voir
       # docs/adr/0001-restauration-granulaire-mvp.md). À définir en .env.
       DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN:-}
+      # Secret de signature des JWT de session utilisateur, voir
+      # docs/adr/0005-gestion-utilisateurs-roles.md. À définir en .env.
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
       RESTORE_PACKAGE_DIR: /tmp/restore_packages
     volumes:
       - ./certs:/app/certs

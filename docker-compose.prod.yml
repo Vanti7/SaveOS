@@ -13,6 +13,7 @@ services:
       API_WORKERS: ${API_WORKERS:-4}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       RESTORE_PACKAGE_DIR: ${RESTORE_PACKAGE_DIR:-/tmp/restore_packages}
     volumes:
       - ./certs:/app/certs:ro
