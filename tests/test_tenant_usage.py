@@ -3,10 +3,14 @@ Tests pour GET/PATCH /api/v1/tenants/{tenant_id} : consommation de quota,
 coût estimé, ajustement du quota/rétention — voir
 docs/adr/0006-facturation-quotas.md.
 """
+from decimal import Decimal
+from unittest.mock import MagicMock
+
 import pytest
 
 from api.database import Agent, Job, Snapshot, Tenant
 from api.auth import AuthManager
+from api.main import compute_tenant_consumed_bytes
 
 DASHBOARD_TOKEN = "test-dashboard-token"
 
@@ -62,6 +66,22 @@ def test_get_tenant_usage_computes_used_bytes_and_percent(client, db_session, te
     assert data["used_bytes"] == 250
     assert data["quota_percent"] == 25.0
     assert data["estimated_cost"] >= 0
+
+
+def test_compute_tenant_consumed_bytes_returns_plain_int_from_decimal_scalar():
+    """PostgreSQL renvoie SUM() sur une colonne BigInteger comme numeric,
+    mappé par SQLAlchemy en decimal.Decimal — contrairement à SQLite
+    (utilisé par tous les autres tests de ce fichier), qui renvoie un int
+    directement. Sans int(...) explicite dans compute_tenant_consumed_bytes,
+    TenantUsageResponse.estimated_cost (Decimal * float) lève TypeError en
+    conditions réelles, jamais détecté par la suite de tests (SQLite)."""
+    fake_db = MagicMock()
+    fake_db.query.return_value.join.return_value.join.return_value.filter.return_value.scalar.return_value = Decimal('250')
+
+    result = compute_tenant_consumed_bytes(fake_db, tenant_id=1)
+
+    assert result == 250
+    assert isinstance(result, int)
 
 
 def test_get_tenant_usage_rejects_other_tenant_for_user(client, db_session, test_admin):

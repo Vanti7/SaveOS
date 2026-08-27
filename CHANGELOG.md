@@ -6,6 +6,14 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.9.1] - 2026-08-27
+
+### 🐛 Corrections de bugs
+
+- Correction : GET /api/v1/tenants/{id} plantait (500) contre une vraie base PostgreSQL (SUM() renvoie decimal.Decimal, pas int, incompatible avec le calcul du coût estimé)
+
+---
+
 ## [1.9.0] - 2026-08-27
 
 ### ✨ Nouvelles fonctionnalités

@@ -210,8 +210,14 @@ def compute_tenant_consumed_bytes(db: Session, tenant_id: int) -> int:
     """Espace consommé par un tenant : somme de Snapshot.size_bytes pour tous
     ses agents. Réutilisée par create_backup_job (vérification de quota) et
     l'endpoint d'usage GET /api/v1/tenants/{tenant_id} — voir
-    docs/adr/0006-facturation-quotas.md."""
-    return (
+    docs/adr/0006-facturation-quotas.md.
+
+    int(...) est nécessaire : PostgreSQL renvoie SUM() sur une colonne
+    BigInteger comme numeric, mappé par SQLAlchemy en decimal.Decimal (SQLite,
+    utilisé par les tests, renvoie un int — l'écart n'apparaît qu'en conditions
+    réelles). Sans cette conversion, TenantUsageResponse.estimated_cost
+    (Decimal * float) lève TypeError."""
+    return int(
         db.query(func.coalesce(func.sum(Snapshot.size_bytes), 0))
         .join(Job, Snapshot.job_id == Job.id)
         .join(Agent, Job.agent_id == Agent.id)
