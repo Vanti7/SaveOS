@@ -6,6 +6,18 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.10.0] - 2026-08-27
+
+### ✨ Nouvelles fonctionnalités
+
+- Actions réelles Détails/Configurer/Supprimer sur un agent depuis le tableau de bord (GET/PATCH/DELETE /api/v1/agents/{agent_id})
+
+### 🐛 Corrections de bugs
+
+- Le token (haché) d'un agent n'est plus exposé dans les réponses de listing/détail
+
+---
+
 ## [1.9.4] - 2026-08-27
 
 ### 🐛 Corrections de bugs

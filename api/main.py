@@ -23,6 +23,7 @@ from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
 from api.database import get_db, create_tables, Agent, Job, Snapshot, Tenant, User
 from api.schemas import (
     AgentRegister, AgentResponse, AgentHeartbeat, AgentStats,
+    AgentPublic, AgentDetailResponse, AgentUpdate,
     JobCreate, JobResponse, JobType, SnapshotResponse,
     TenantCreate, TenantResponse, TenantCreateResponse, TenantUpdate, TenantUsageResponse,
     UserCreate, UserResponse, LoginRequest, TokenResponse
@@ -175,36 +176,34 @@ async def agent_heartbeat(
     
     return {"message": "Heartbeat reçu", "timestamp": datetime.utcnow()}
 
+def _compute_agent_stats(db: Session, agent_id: int) -> dict:
+    """Statistiques d'un agent (snapshots, volume, dernière sauvegarde) —
+    partagé entre GET /agents/stats (l'agent lui-même) et
+    GET /agents/{agent_id} (tableau de bord/utilisateur, bouton
+    "Détails" de web/app/agents/page.tsx)."""
+    snapshots = db.query(Snapshot).join(Job, Snapshot.job_id == Job.id).filter(
+        Job.agent_id == agent_id
+    ).all()
+
+    last_job = db.query(Job).filter(
+        Job.agent_id == agent_id,
+        Job.type == "backup",
+        Job.status == "completed"
+    ).order_by(Job.finished_at.desc()).first()
+
+    return {
+        "total_snapshots": len(snapshots),
+        "total_size_bytes": sum(s.size_bytes for s in snapshots),
+        "last_backup": last_job.finished_at if last_job else None,
+    }
+
 @app.get(f"{API_PREFIX}/agents/stats", response_model=AgentStats)
 async def get_agent_stats(
     current_agent: Agent = Depends(get_current_agent),
     db: Session = Depends(get_db)
 ):
     """Récupère les statistiques de l'agent"""
-    
-    # Compter les snapshots
-    snapshots = db.query(Snapshot).join(Job, Snapshot.job_id == Job.id).filter(
-        Job.agent_id == current_agent.id
-    ).all()
-    
-    total_snapshots = len(snapshots)
-    total_size_bytes = sum(s.size_bytes for s in snapshots)
-    
-    # Dernière sauvegarde
-    last_job = db.query(Job).filter(
-        Job.agent_id == current_agent.id,
-        Job.type == "backup",
-        Job.status == "completed"
-    ).order_by(Job.finished_at.desc()).first()
-    
-    last_backup = last_job.finished_at if last_job else None
-    
-    return AgentStats(
-        total_snapshots=total_snapshots,
-        total_size_bytes=total_size_bytes,
-        last_backup=last_backup,
-        status=current_agent.status
-    )
+    return AgentStats(**_compute_agent_stats(db, current_agent.id), status=current_agent.status)
 
 # === ENDPOINTS JOBS ===
 
@@ -347,7 +346,7 @@ def _require_dashboard_or_user(principal: Principal) -> None:
     if principal.agent is not None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Réservé au tableau de bord")
 
-@app.get(f"{API_PREFIX}/agents", response_model=List[AgentResponse])
+@app.get(f"{API_PREFIX}/agents", response_model=List[AgentPublic])
 async def list_all_agents(
     tenant_id: Optional[int] = None,
     principal: Principal = Depends(get_current_principal),
@@ -362,6 +361,97 @@ async def list_all_agents(
     if effective_tenant_id is not None:
         query = query.filter(Agent.tenant_id == effective_tenant_id)
     return query.order_by(Agent.created_at.desc()).all()
+
+def _get_agent_in_scope(principal: Principal, db: Session, agent_id: int) -> Agent:
+    """Récupère un agent par id, réservé au tableau de bord ou à un
+    utilisateur de son propre tenant (404 si absent, 403 si hors tenant) —
+    partagé par les endpoints Détails/Configurer/Supprimer d'un agent."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent introuvable")
+    scope = principal.tenant_scope()
+    if scope is not None and agent.tenant_id != scope:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé à votre tenant")
+    return agent
+
+@app.get(f"{API_PREFIX}/agents/{{agent_id}}", response_model=AgentDetailResponse)
+async def get_agent_detail(
+    agent_id: int,
+    principal: Principal = Depends(get_current_principal),
+    db: Session = Depends(get_db)
+):
+    """Détail d'un agent et ses statistiques (tableau de bord ou utilisateur
+    de son propre tenant) — bouton "Détails" de web/app/agents/page.tsx."""
+    _require_dashboard_or_user(principal)
+    agent = _get_agent_in_scope(principal, db, agent_id)
+    stats = _compute_agent_stats(db, agent.id)
+    return AgentDetailResponse(
+        id=agent.id, hostname=agent.hostname, platform=agent.platform,
+        status=agent.status, last_seen=agent.last_seen, created_at=agent.created_at,
+        **stats
+    )
+
+@app.patch(f"{API_PREFIX}/agents/{{agent_id}}", response_model=AgentPublic)
+async def update_agent(
+    agent_id: int,
+    agent_update: AgentUpdate,
+    principal: Principal = Depends(get_current_principal),
+    db: Session = Depends(get_db)
+):
+    """Modifie un agent (actuellement : renommage du hostname uniquement —
+    aucune planification/chemin de sauvegarde n'est stocké par agent dans ce
+    modèle de données) — bouton "Configurer" de web/app/agents/page.tsx."""
+    _require_dashboard_or_user(principal)
+    agent = _get_agent_in_scope(principal, db, agent_id)
+
+    if agent_update.hostname is not None:
+        conflict = db.query(Agent).filter(
+            Agent.tenant_id == agent.tenant_id,
+            Agent.hostname == agent_update.hostname,
+            Agent.id != agent.id,
+        ).first()
+        if conflict:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Un agent avec ce hostname existe déjà pour ce tenant"
+            )
+        agent.hostname = agent_update.hostname
+
+    db.commit()
+    db.refresh(agent)
+    return agent
+
+@app.delete(f"{API_PREFIX}/agents/{{agent_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agent(
+    agent_id: int,
+    principal: Principal = Depends(get_current_principal),
+    db: Session = Depends(get_db)
+):
+    """Supprime un agent ainsi que son historique de jobs/snapshots en base
+    (suppression en cascade, décision validée avec l'utilisateur — les
+    données Borg elles-mêmes restent sur disque, orphelines, SaveOS n'en a
+    plus connaissance après suppression) — bouton "Supprimer" de
+    web/app/agents/page.tsx."""
+    _require_dashboard_or_user(principal)
+    agent = _get_agent_in_scope(principal, db, agent_id)
+
+    snapshot_ids = [
+        row.id for row in db.query(Snapshot.id)
+        .join(Job, Snapshot.job_id == Job.id)
+        .filter(Job.agent_id == agent.id).all()
+    ]
+    if snapshot_ids:
+        # Un job de restauration (sur cet agent ou un autre) peut référencer
+        # un de ces snapshots via Job.snapshot_id : le nullifier avant de
+        # supprimer les snapshots eux-mêmes (contrainte FK snapshots.id).
+        db.query(Job).filter(Job.snapshot_id.in_(snapshot_ids)).update(
+            {Job.snapshot_id: None}, synchronize_session=False
+        )
+        db.query(Snapshot).filter(Snapshot.id.in_(snapshot_ids)).delete(synchronize_session=False)
+
+    db.query(Job).filter(Job.agent_id == agent.id).delete(synchronize_session=False)
+    db.delete(agent)
+    db.commit()
 
 @app.get(f"{API_PREFIX}/jobs", response_model=List[JobResponse])
 async def list_all_jobs(
