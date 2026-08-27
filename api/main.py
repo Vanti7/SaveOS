@@ -409,12 +409,18 @@ async def list_all_snapshots(
 # === ENDPOINTS TÉLÉCHARGEMENT D'AGENTS ===
 
 @app.get("/download/agent/{platform}")
-async def download_agent(platform: str, registration_secret: str = ""):
-    """Télécharge un package d'agent pour une plateforme donnée. Le secret
-    d'enregistrement (obtenu via POST /api/v1/tenants) est optionnel ici et
-    embarqué tel quel dans config.json — sans lui, l'auto-enregistrement de
-    l'agent installé depuis ce package échouera (401), voir
-    docs/adr/0004-multi-tenancy-avancee.md."""
+async def download_agent(platform: str, registration_secret: str = "", hostname: str = "", token: str = ""):
+    """Télécharge un package d'agent pour une plateforme donnée.
+
+    Deux façons de rendre le package fonctionnel dès l'installation, voir
+    docs/adr/0007-provisioning-package-source.md :
+    - hostname + token (recommandé) : ceux renvoyés par POST
+      /api/v1/agents/provision (agent déjà créé côté serveur) — le script
+      d'installation appelle `configure --token`, aucun appel réseau ni
+      secret supplémentaire nécessaire.
+    - registration_secret seul (obtenu via POST /api/v1/tenants) :
+      le script appelle `register`, qui crée l'agent à l'installation —
+      sans aucun des deux, l'auto-enregistrement échouera (401)."""
 
     if platform not in ['windows', 'macos', 'linux']:
         raise HTTPException(
@@ -423,7 +429,7 @@ async def download_agent(platform: str, registration_secret: str = ""):
         )
 
     # Générer le package d'agent
-    agent_package = generate_agent_package(platform, registration_secret)
+    agent_package = generate_agent_package(platform, registration_secret, hostname, token)
     
     # Déterminer le type de contenu et l'extension
     if platform == 'windows':
@@ -702,7 +708,7 @@ async def list_users(
 AGENT_SOURCE_DIR = Path(__file__).resolve().parent.parent / 'agent'
 AGENT_SOURCE_FILES = ['__init__.py', 'cli.py', 'config.py', 'api_client.py', 'service.py']
 
-def generate_agent_package(platform: str, registration_secret: str = "") -> bytes:
+def generate_agent_package(platform: str, registration_secret: str = "", hostname: str = "", token: str = "") -> bytes:
     """Génère un package d'installation (code source) pour la plateforme
     donnée, à partir des vrais fichiers du package agent/ — plus de copie
     dupliquée et obsolète : ce qui est livré est ce qui tourne réellement
@@ -717,8 +723,16 @@ def generate_agent_package(platform: str, registration_secret: str = "") -> byte
     # de l'appli) — doit rester aligné avec setup.py::install_requires.
     requirements = "click>=8.1.7\nrequests>=2.31.0\npython-dotenv>=1.0.0\n"
 
+    # Avec un token déjà provisionné (POST /api/v1/agents/provision),
+    # configure --token évite tout appel réseau et le besoin du secret
+    # d'enregistrement du tenant. Sinon, repli sur register (nécessite
+    # registration_secret dans config.json) — voir
+    # docs/adr/0007-provisioning-package-source.md.
+    win_register_line = f'python -m agent.cli configure --token "{token}"' if token else 'python -m agent.cli register'
+    unix_register_line = f'python3 -m agent.cli configure --token "{token}"' if token else 'python3 -m agent.cli register'
+
     if platform == 'windows':
-        install_script = '''@echo off
+        install_script = f'''@echo off
 echo Installation de SaveOS Agent pour Windows...
 
 python --version >nul 2>&1
@@ -739,14 +753,14 @@ copy config.json "%APPDATA%\\SaveOS\\" >nul
 cd /d "%INSTALL_DIR%"
 python -m pip install -r requirements.txt
 
-python -m agent.cli register
+{win_register_line}
 
 echo Installation terminee !
 echo L'agent SaveOS est maintenant installe.
 pause
 '''
     else:
-        install_script = '''#!/bin/bash
+        install_script = f'''#!/bin/bash
 set -e
 echo "Installation de SaveOS Agent..."
 
@@ -781,7 +795,7 @@ cp config.json "$CONFIG_DIR/"
 cd "$INSTALL_DIR"
 sudo python3 -m pip install -r requirements.txt
 
-python3 -m agent.cli register
+{unix_register_line}
 
 echo "Installation terminee !"
 echo "L'agent SaveOS est maintenant installe."
@@ -794,7 +808,7 @@ echo "L'agent SaveOS est maintenant installe."
     api_host = os.getenv('API_HOST', 'localhost')
     config = {
         "api_url": f"https://{api_host}:{os.getenv('API_PORT', '8000')}",
-        "hostname": f"{platform}-agent",
+        "hostname": hostname or f"{platform}-agent",
         "platform": platform,
         "registration_secret": registration_secret,
         "verify_ssl": api_host not in ("localhost", "127.0.0.1"),

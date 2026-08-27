@@ -60,3 +60,22 @@ def test_register_without_registration_secret_fails(tmp_path):
 def test_register_persists_registration_secret_to_config(tmp_path):
     config = _register(tmp_path, ['--api-url', 'https://api.saveos.com', *DEFAULT_SECRET_ARGS])
     assert config['registration_secret'] == 'test-secret'
+
+
+# --- configure : token déjà provisionné, aucun appel réseau (voir
+# docs/adr/0007-provisioning-package-source.md) ---
+
+def test_configure_saves_provisioned_token_without_network_call(tmp_path):
+    runner = CliRunner()
+    with patch('agent.cli.SaveOSAPIClient') as mock_client_cls:
+        result = runner.invoke(cli, ['--config-dir', str(tmp_path), 'configure', '--token', 'provisioned-token'])
+
+    assert result.exit_code == 0, result.output
+    assert AgentConfig(config_dir=str(tmp_path)).get_token() == 'provisioned-token'
+    mock_client_cls.assert_not_called()
+
+
+def test_configure_without_token_fails():
+    runner = CliRunner()
+    result = runner.invoke(cli, ['configure'])
+    assert result.exit_code != 0

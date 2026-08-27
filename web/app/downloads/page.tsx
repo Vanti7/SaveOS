@@ -87,19 +87,20 @@ export default function DownloadsPage() {
       // Demander le hostname à l'utilisateur
       const hostname = prompt('Nom de la machine (hostname):') || `${platform}-agent-${Date.now()}`
 
-      // Provisionner l'agent sur le serveur, puis télécharger le package
-      // source pré-configuré (voir web/app/lib/api.ts pour l'installeur
-      // natif exe/dmg/deb, qui ne nécessite pas ce provisioning).
+      // Provisionne l'agent sur le serveur (token dédié), puis télécharge
+      // le package source pré-configuré avec CE hostname et CE token : le
+      // script d'installation embarqué s'y connecte directement, sans
+      // appel réseau supplémentaire ni secret à ressaisir — voir
+      // docs/adr/0007-provisioning-package-source.md (voir aussi
+      // web/app/lib/api.ts pour l'installeur natif exe/dmg/deb, qui ne
+      // nécessite pas ce provisioning).
       const provisionData = await api.provisionAgent(hostname, platform, effectiveTenantId)
       setConfigData(provisionData)
 
-      // Secret d'enregistrement du tenant, nécessaire à l'auto-enregistrement
-      // de l'agent une fois installé (affiché une seule fois à la création
-      // du tenant, voir la page Paramètres) — voir
-      // docs/adr/0004-multi-tenancy-avancee.md.
-      const registrationSecret = prompt("Secret d'enregistrement du tenant :") || ''
-
-      const blob = await api.downloadAgent(platform, registrationSecret)
+      const blob = await api.downloadAgent(platform, {
+        hostname: provisionData.hostname,
+        token: provisionData.token,
+      })
       const filename = `saveos-agent-${hostname}-${platform}.${platform === 'windows' ? 'zip' : 'tar.gz'}`
       fileDownload(blob, filename)
 

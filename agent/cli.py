@@ -93,6 +93,22 @@ def register(ctx, api_url, verify_ssl, registration_secret):
         sys.exit(1)
 
 @cli.command()
+@click.option('--token', required=True, help="Token d'un agent déjà provisionné depuis le tableau de bord")
+@click.pass_context
+def configure(ctx, token):
+    """Configure l'agent avec un token déjà provisionné (tableau de bord ->
+    Téléchargements) — aucun appel réseau, contrairement à register qui
+    exige un secret d'enregistrement de tenant."""
+    config_manager = ctx.obj['config']
+
+    if config_manager.save_token(token):
+        click.echo("✅ Agent configuré avec le token fourni.")
+        click.echo(f"   Token sauvegardé dans: {config_manager.token_file}")
+    else:
+        click.echo("❌ Erreur lors de la sauvegarde du token", err=True)
+        sys.exit(1)
+
+@cli.command()
 @click.pass_context
 def status(ctx):
     """Affiche le statut de l'agent et les statistiques"""

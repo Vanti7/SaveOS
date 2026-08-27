@@ -230,13 +230,18 @@ export const api = {
     fileDownload(response.data, filename)
   },
 
-  // Téléchargement d'agent (package source, zip/tar.gz). registrationSecret
-  // est embarqué dans le config.json du package (nécessaire à l'auto-
-  // enregistrement de l'agent installé, voir
-  // docs/adr/0004-multi-tenancy-avancee.md).
-  async downloadAgent(platform: string, registrationSecret?: string): Promise<Blob> {
+  // Téléchargement d'agent (package source, zip/tar.gz). Avec hostname +
+  // token (renvoyés par provisionAgent), le script d'installation embarqué
+  // configure l'agent directement, sans appel réseau ni secret
+  // supplémentaire. Sans eux, repli sur registrationSecret (obtenu à la
+  // création du tenant) — voir docs/adr/0007-provisioning-package-source.md.
+  async downloadAgent(platform: string, options?: { hostname?: string; token?: string; registrationSecret?: string }): Promise<Blob> {
     const response = await apiClient.get(`/download/agent/${platform}`, {
-      params: registrationSecret ? { registration_secret: registrationSecret } : {},
+      params: {
+        ...(options?.hostname ? { hostname: options.hostname } : {}),
+        ...(options?.token ? { token: options.token } : {}),
+        ...(options?.registrationSecret ? { registration_secret: options.registrationSecret } : {}),
+      },
       responseType: 'blob'
     })
     return response.data

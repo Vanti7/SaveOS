@@ -126,10 +126,10 @@ curl -X PATCH https://localhost:8000/api/v1/tenants/1 \
 
 Deux options depuis l'interface web (section **"Téléchargements"**), pour chaque plateforme (Windows/macOS/Linux) — un tenant doit être sélectionné au préalable :
 
-- **Installeur natif** (`.exe`/`.dmg`/`.deb`) : aucune dépendance Python requise, enregistre automatiquement l'agent comme service à démarrage automatique (tâche planifiée Windows, launchd macOS, systemd Linux) pendant l'installation. Construit et publié en asset sur chaque [GitHub Release](https://github.com/Vanti7/SaveOS/releases) par `.github/workflows/release.yml` (voir `packaging/` et `docs/adr/0002-packaging-agents.md`).
-- **Package source** (`.zip`/`.tar.gz`) : code source de l'agent (`agent/`) pré-configuré avec token, URL serveur et secret d'enregistrement du tenant sélectionné, nécessite Python 3.8+ sur la machine cible.
+- **Installeur natif** (`.exe`/`.dmg`/`.deb`) : aucune dépendance Python requise, enregistre automatiquement l'agent comme service à démarrage automatique (tâche planifiée Windows, launchd macOS, systemd Linux) pendant l'installation. Construit et publié en asset sur chaque [GitHub Release](https://github.com/Vanti7/SaveOS/releases) par `.github/workflows/release.yml` (voir `packaging/` et `docs/adr/0002-packaging-agents.md`) — **nécessite qu'une release ait effectivement été publiée sur ce dépôt** ; sans release, le lien redirige vers un asset inexistant (404).
+- **Package source** (`.zip`/`.tar.gz`) : code source de l'agent (`agent/`), automatiquement pré-configuré avec le hostname et le token renvoyés par le provisioning — aucun secret à ressaisir (voir [docs/adr/0007-provisioning-package-source.md](docs/adr/0007-provisioning-package-source.md)). Nécessite Python 3.8+ sur la machine cible.
 
-Dans les deux cas, l'agent apparaît automatiquement dans la liste et commence à envoyer des heartbeats une fois enregistré (`saveos-agent register --registration-secret <secret>`, ou automatique pour l'installeur natif via le script d'installation).
+Dans les deux cas, l'agent apparaît automatiquement dans la liste et commence à envoyer des heartbeats dès l'installation (script d'installation embarqué pour le package source, script natif pour l'installeur).
 
 ### Commandes de l'agent (optionnel)
 
