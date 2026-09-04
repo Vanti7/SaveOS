@@ -6,6 +6,14 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.10.1] - 2026-09-04
+
+### 🐛 Corrections de bugs
+
+- Texte saisi invisible dans les champs en mode sombre (blanc sur blanc), sur la connexion et tous les autres formulaires
+
+---
+
 ## [1.10.0] - 2026-08-27
 
 ### ✨ Nouvelles fonctionnalités

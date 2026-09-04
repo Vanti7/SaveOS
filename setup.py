@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="saveos-agent",
-    version="1.10.0",
+    version="1.10.1",
     description="Agent de sauvegarde pour le système SaveOS",
     author="SaveOS Team",
     author_email="contact@saveos.local",
