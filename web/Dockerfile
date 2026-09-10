@@ -6,8 +6,10 @@ WORKDIR /app
 # Copier les fichiers de package
 COPY package.json ./
 
-# Installer les dépendances
-RUN npm install --only=production
+# devDependencies comprises : le build type-check aussi les fichiers de test
+# et vitest.config.ts (cf. Dockerfile.prod). Le stage runner ne copie que la
+# sortie standalone, l'image finale n'est donc pas alourdie.
+RUN npm install
 
 # Copier le code source
 COPY . .

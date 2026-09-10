@@ -1,0 +1,3 @@
+# Contexte de build de l'image web de développement (contexte ./web).
+node_modules
+.next
