@@ -2,18 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Pas de variante sombre : toutes les surfaces du tableau de bord sont
+   claires (.card en bg-white, textes en text-gray-*). Le bloc
+   prefers-color-scheme: dark hérité du starter Next.js ne faisait que
+   basculer la couleur héritée du body en blanc, rendant invisible le texte
+   saisi dans les champs (blanc sur blanc) — voir
+   docs/adr/0010-contraste-champs-de-saisie.md. */
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
   --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
 }
 
 body {
@@ -51,8 +49,10 @@ body {
   @apply bg-white rounded-lg shadow-md p-6 border border-gray-200;
 }
 
+/* bg-white/text-gray-900 explicites : un champ de saisie ne doit jamais
+   dépendre de la couleur héritée du body pour rester lisible. */
 .input-field {
-  @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  @apply w-full px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
 }
 
 .status-badge {
