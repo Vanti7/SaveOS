@@ -2,7 +2,7 @@
 
 ## Statut
 
-Accepté (partiel — voir « Hors périmètre »)
+Accepté
 
 ## Contexte
 
@@ -36,11 +36,16 @@ Les 10 tests du fichier passent tous actuellement. Plus de trace du désaligneme
 
 `Dockerfile.prod` (stages `web-builder`/`web-prod`), `web/Dockerfile` (stages `builder`/`runner`), `web/Dockerfile.dev`. Aligné sur la CI, déjà passée sur Node 20 (voir docs/adr précédent sur l'EOL Node 18). Vérifié : les trois images se construisent sans erreur.
 
-## Hors périmètre (décision utilisateur nécessaire, non traité ici)
+### 6. Entropie Borg sous Docker Desktop/WSL2 — investigué, pas d'action en prod
 
-- **`agent/cli.py` envoie des chemins locaux (`repo_path`, `source_paths`) au serveur** : ce ne sont pas de simples chemins mal formatés à corriger — le worker exécute `borg` directement dans son propre conteneur Linux (`subprocess.run(['borg', ...], ...)`, `worker/tasks.py`), qui n'a strictement aucun accès au système de fichiers de la machine agent. C'est une limitation d'architecture (l'agent ne transfère jamais ses fichiers au worker) déjà identifiée comme travail futur, pas un bug ponctuel.
-- **Borg `--encryption=repokey` peut bloquer sous Docker Desktop/WSL2** (entropie) : la mitigation standard (`haveged`) doit écrire dans le pool d'entropie du noyau, ce qui exige d'être root ou `CAP_SYS_ADMIN` — or `Dockerfile.prod`'s stage `worker-prod` tourne délibérément en non-root (`USER saveos`). Défaire ce durcissement en production pour un symptôme observé seulement en local (Docker Desktop), non confirmé sur les hôtes CI/staging réels, est un arbitrage sécurité qui dépasse une correction de bug de routine.
+Hypothèse initiale : `--encryption=repokey` bloquerait par manque d'entropie, avec comme mitigation standard `haveged` — mais `haveged` doit écrire dans le pool d'entropie du noyau (ioctl sur `/dev/random`), ce qui exige root ou `CAP_SYS_ADMIN`, alors que `Dockerfile.prod`'s stage `worker-prod` tourne délibérément en non-root (`USER saveos`). Avant de défaire ce durcissement, vérification sur un vrai hôte Linux plutôt que sur la machine locale (Docker Desktop/WSL2, seul environnement où le hang avait été observé) : workflow jetable sur runner GitHub Actions (`ubuntu-latest`, run [34549051520](https://github.com/Vanti7/SaveOS/actions/runs/34549051520), depuis supprimé) exécutant `borg init --encryption=repokey` 4 fois de suite.
+
+**Résultat : aucun blocage, chaque exécution ~0,25–0,3s.** Confirme que le hang est spécifique à la VM WSL2 fraîchement démarrée de Docker Desktop (probablement un délai d'amorçage du CSPRNG du noyau propre à cet environnement), pas un risque réel sur les hôtes CI/staging/prod (noyau déjà amorcé en entropie bien avant qu'un conteneur ne démarre). **Décision : ne rien changer en prod** — pas de `haveged`, pas d'assouplissement du non-root. Le contournement `--encryption=none` reste disponible pour du test local si le hang se reproduit.
 
 ## Conséquences
 
-Réduction concrète de la surface de vulnérabilités connues côté web, restauration du comportement correct de `job.snapshot_id`, alignement Node 20 partout. Les deux points hors périmètre restent trackés comme travail futur, avec la justification de leur mise de côté explicitée ci-dessus plutôt que silencieusement ignorés.
+Réduction concrète de la surface de vulnérabilités connues côté web, restauration du comportement correct de `job.snapshot_id`, alignement Node 20 partout, clarification (avec preuve) qu'aucune action n'est requise côté entropie Borg en production.
+
+## Hors périmètre (décision de conception à part, non traitée ici)
+
+- **`agent/cli.py` envoie des chemins locaux (`repo_path`, `source_paths`) au serveur** : ce ne sont pas de simples chemins mal formatés à corriger — le worker exécute `borg` directement dans son propre conteneur Linux (`subprocess.run(['borg', ...], ...)`, `worker/tasks.py`), qui n'a strictement aucun accès au système de fichiers de la machine agent. C'est une limitation d'architecture (l'agent ne transfère jamais ses fichiers au worker). L'utilisateur a demandé un chantier de conception dédié plutôt qu'une décision prise dans ce lot de correctifs — pas encore cadré.
