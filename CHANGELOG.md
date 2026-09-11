@@ -6,6 +6,16 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.10.3] - 2026-09-11
+
+### 🐛 Corrections de bugs
+
+- worker : job.snapshot_id restait à NULL après un backup réussi (assigné avant flush)
+- Sécurité : next.js 14.0.4 -> 14.2.35 (vulnérabilité critique corrigée)
+- Docker : images web migrées de node:18-alpine (EOL) vers node:20-alpine
+
+---
+
 ## [1.10.2] - 2026-09-11
 
 ### 🐛 Corrections de bugs

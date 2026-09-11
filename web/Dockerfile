@@ -1,5 +1,5 @@
 # Dockerfile pour l'interface web SaveOS
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ ENV NEXT_PUBLIC_API_URL=https://localhost:8000
 RUN npm run build
 
 # Image de production
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 
 WORKDIR /app
 

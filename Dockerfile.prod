@@ -67,7 +67,7 @@ USER saveos
 CMD ["python", "-m", "worker.run"]
 
 # Stage 4: Web Production (Node.js multi-stage)
-FROM node:18-alpine as web-builder
+FROM node:20-alpine as web-builder
 
 WORKDIR /app
 
@@ -84,7 +84,7 @@ COPY web/ .
 RUN npm run build
 
 # Stage 5: Web Runtime
-FROM node:18-alpine as web-prod
+FROM node:20-alpine as web-prod
 
 WORKDIR /app
 

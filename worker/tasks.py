@@ -399,12 +399,17 @@ def process_backup_job(job_id: int) -> Dict[str, Any]:
             )
             
             db.add(snapshot)
-            
+            # flush avant de lire snapshot.id : sans ça, l'id est encore None
+            # (auto-incrément non résolu tant que la ligne n'a pas été
+            # envoyée à la base), et job.snapshot_id se retrouvait toujours
+            # à NULL malgré un backup réussi.
+            db.flush()
+
             # Mettre à jour le job
             job.status = "completed"
             job.finished_at = datetime.utcnow()
             job.snapshot_id = snapshot.id
-            
+
             db.commit()
             db.refresh(snapshot)
 

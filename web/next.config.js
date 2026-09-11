@@ -22,9 +22,6 @@ const nextConfig = {
       ],
     };
   },
-  experimental: {
-    serverComponentsExternalPackages: ['axios'],
-  },
 };
 
 module.exports = nextConfig;
