@@ -135,9 +135,6 @@ token
 borg_repos/
 test_data/
 
-# Docker
-.dockerignore
-
 # IDE
 .vscode/
 .idea/

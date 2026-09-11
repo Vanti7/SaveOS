@@ -6,6 +6,16 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
+## [1.10.2] - 2026-09-11
+
+### 🐛 Corrections de bugs
+
+- Déploiement staging : le build de l'image web échouait systématiquement (module vitest/config introuvable) faute de devDependencies installées dans le stage de build
+- CI : le build de l'image web (stage web-builder) est désormais vérifié à chaque PR, de façon bloquante
+- Ajout de .dockerignore (racine et web/), jusque-là ignoré par erreur par .gitignore
+
+---
+
 ## [1.10.1] - 2026-09-04
 
 ### 🐛 Corrections de bugs

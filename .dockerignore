@@ -1,0 +1,14 @@
+# Contexte de build. Sans ce fichier, `COPY web/ .` (Dockerfile.prod) recouvre
+# le node_modules installé pour Alpine par celui de la machine hôte, et les
+# secrets locaux (.env, certs/) transitent inutilement par le démon Docker.
+.git
+.github
+.venv
+.pytest_cache
+.coverage
+**/__pycache__
+**/*.pyc
+**/node_modules
+web/.next
+.env
+certs

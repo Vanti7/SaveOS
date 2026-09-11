@@ -110,6 +110,14 @@ jobs:
         
         echo "✅ Fichiers Docker vérifiés"
 
+    # Bloquant : seul endroit où le build web est exercé dans les mêmes
+    # conditions que le déploiement (dépendances installées par le Dockerfile,
+    # pas par la CI). Le job « Tests Web » installe tout avec `npm install` :
+    # il ne pouvait donc pas voir que le builder n'installait que les
+    # `dependencies` — 22 déploiements staging échoués sans que la CI bronche.
+    - name: Build de l'image web (bloquant)
+      run: docker build --target web-builder -f Dockerfile.prod .
+
   # Résumé final
   summary:
     name: Résumé CI
@@ -127,7 +135,7 @@ jobs:
         echo "Docker Check: ${{ needs.docker-check.result }}"
         echo ""
         
-        if [[ "${{ needs.python-tests.result }}" == "success" && "${{ needs.web-tests.result }}" == "success" ]]; then
+        if [[ "${{ needs.python-tests.result }}" == "success" && "${{ needs.web-tests.result }}" == "success" && "${{ needs.docker-check.result }}" == "success" ]]; then
           echo "🎉 CI RÉUSSI - Prêt pour merge!"
         else
           echo "⚠️ Certains tests ont échoué mais c'est OK pour le dev"
