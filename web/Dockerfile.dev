@@ -1,5 +1,5 @@
 # Dockerfile de développement pour l'interface web SaveOS
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
