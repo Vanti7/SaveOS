@@ -76,6 +76,37 @@ def test_process_backup_job_failure_records_metrics(
     assert _counter_value('backup', 'failure') == before_count + 1
 
 
+@patch('worker.tasks.SessionLocal')
+@patch('worker.tasks.BorgManager.create_backup')
+@patch('worker.tasks.BorgManager.init_repo')
+@patch('worker.tasks.os.path.exists', return_value=True)
+def test_process_backup_job_success_sets_job_snapshot_id(
+    mock_exists, mock_init, mock_create, mock_session_local, db_session, test_agent
+):
+    """Régression : job.snapshot_id restait à NULL après un backup réussi
+    car il était lu sur l'objet Snapshot juste après db.add(), avant tout
+    flush — l'id auto-incrémenté n'existait donc pas encore."""
+    agent, _ = test_agent
+    job = Job(agent_id=agent.id, type='backup', status='pending', config=json.dumps({'source_paths': ['/tmp/x']}))
+    db_session.add(job)
+    db_session.commit()
+    db_session.refresh(job)
+    job_id = job.id
+
+    mock_session_local.return_value = db_session
+    mock_create.return_value = {'success': True, 'stdout': '', 'stderr': '', 'stats': {'compressed_size': 10}}
+
+    result = process_backup_job(job_id)
+
+    assert result['success'] is True
+    # process_backup_job ferme sa session (db.close()) en sortie : on
+    # relit le job plutôt que de rafraîchir l'objet local, désormais détaché.
+    refreshed_job = db_session.query(Job).filter(Job.id == job_id).first()
+    snapshot = db_session.query(Snapshot).filter(Snapshot.job_id == job_id).first()
+    assert snapshot is not None
+    assert refreshed_job.snapshot_id == snapshot.id
+
+
 def test_process_backup_job_missing_job_does_not_record_metrics(db_session):
     before_success = _counter_value('backup', 'success')
     before_failure = _counter_value('backup', 'failure')
